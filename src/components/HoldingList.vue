@@ -4,9 +4,11 @@ import HoldingItem from './HoldingItem.vue'
 
 const props = defineProps({
   holdings: { type: Array, required: true },
+  editing: { type: Boolean, default: false },
 })
-// 바뀐 순서(holding_id 배열)를 부모에게 알림 → 부모가 DB 에 저장
-const emit = defineEmits(['reorder'])
+// reorder: 바뀐 순서(holding_id 배열) → 부모가 DB 에 저장
+// delete: 편집 모드에서 삭제 버튼을 누른 종목
+const emit = defineEmits(['reorder', 'delete'])
 
 const listEl = ref(null)
 let drag = null
@@ -143,6 +145,12 @@ onBeforeUnmount(() => {
     @pointercancel="onPointerUp"
     @keydown="onKeyDown"
   >
-    <HoldingItem v-for="h in holdings" :key="h.holding_id" :holding="h" />
+    <HoldingItem
+      v-for="h in holdings"
+      :key="h.holding_id"
+      :holding="h"
+      :editing="editing"
+      @delete="emit('delete', $event)"
+    />
   </ul>
 </template>

@@ -6,7 +6,7 @@
 - 프론트엔드: Vue 3 + Vite
 - 백엔드/DB: Supabase (Postgres)
 
-> ⚠️ 현재 RLS 정책은 **누구나 읽기·쓰기 가능**(데모용)입니다. 실제 자산 정보는 넣지 마세요.
+> ⚠️ 현재 RLS 정책은 **누구나 읽기·쓰기·보유 종목 삭제 가능**(데모용)입니다. 실제 자산 정보는 넣지 마세요.
 > 실서비스 전환 시 `supabase/schema.sql` 하단의 "권장안"을 적용하세요.
 
 ## 폴더 구조
@@ -24,16 +24,19 @@ stocky/
 │   │   ├── AppHeader.vue         # 상단 바 (로고, 메뉴, 검색)
 │   │   ├── PortfolioSummary.vue  # 총 평가금액·수익률·원금·국내/해외 비중
 │   │   ├── HoldingList.vue       # 보유 주식 목록 + 드래그 앤 드롭
-│   │   └── HoldingItem.vue       # 종목 한 줄 (USD 배지 포함)
+│   │   ├── HoldingItem.vue       # 종목 한 줄 (USD 배지, 편집 모드 삭제 버튼)
+│   │   ├── AddHoldingSheet.vue   # 주식 추가 창 (종목 검색 / 새 종목 등록)
+│   │   └── BaseSheet.vue         # 공통 창 (모바일 하단 시트 / 데스크톱 가운데)
 │   ├── composables/
-│   │   └── usePortfolio.js       # Supabase 조회 + 순서 저장
+│   │   └── usePortfolio.js       # Supabase 조회 · 추가 · 삭제 · 순서 저장
 │   ├── lib/
 │   │   └── supabase.js           # Supabase 클라이언트 (.env 값 사용)
 │   └── utils/
 │       └── format.js             # 금액·수익률 표시 형식
 ├── supabase/
 │   ├── schema.sql                # 테이블·뷰·함수·RLS 정책
-│   └── seed.sql                  # 예시 데이터
+│   ├── seed.sql                  # 예시 데이터
+│   └── migrations/               # 기존 DB 에 추가로 적용할 변경 SQL
 ├── .env.example                  # 환경변수 목록 (값 없음)
 ├── vite.config.js
 ├── vercel.json                   # Vercel 배포 설정 (빌드, 보안 헤더)
@@ -46,6 +49,12 @@ Supabase 대시보드 → **SQL Editor** 에서 순서대로 실행합니다.
 
 1. `supabase/schema.sql`
 2. `supabase/seed.sql` (예시 데이터)
+
+이미 위 SQL 을 실행한 DB 라면 `supabase/migrations/` 의 파일을 번호 순서대로 추가 실행합니다.
+
+| 파일 | 내용 |
+|---|---|
+| `002_holdings_delete.sql` | 보유 종목 삭제 허용 (주식 삭제 기능용) |
 
 ## 로컬 실행
 
@@ -83,6 +92,8 @@ npm run dev
 |---|---|
 | 포트폴리오 요약 | 총 평가금액, 총 수익금/수익률, 투자 원금, 국내·해외 평가금액과 비중 |
 | 보유 종목 목록 | 종목명, 보유 수량, 평가금액, 수익금/수익률 (데스크톱은 평균 단가·현재가 추가) |
+| 주식 추가 | `+ 추가` → 등록된 종목 검색 후 보유 수량·평균 단가 입력, 없으면 새 종목 등록 (예상 평가금액 미리보기) |
+| 주식 삭제 | `편집` → 종목의 휴지통 버튼 → 확인 후 삭제 |
 | USD 배지 | 해외(미국) 주식은 종목명 옆에 `USD` 표시 |
 | 순서 변경 | `≡` 손잡이를 드래그 (마우스·터치), 또는 손잡이 선택 후 키보드 `↑` `↓` → DB 에 저장 |
 | 반응형 | 모바일(~639px) / 태블릿(640~1023px) / 데스크톱(1024px~) 레이아웃 |

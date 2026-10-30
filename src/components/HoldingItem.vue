@@ -3,7 +3,9 @@ import { fmt, signed, tone, rateText, ratePct, unitPrice, qtyText } from '../uti
 
 defineProps({
   holding: { type: Object, required: true },
+  editing: { type: Boolean, default: false }, // 편집 모드: 손잡이 대신 삭제 버튼
 })
+const emit = defineEmits(['delete'])
 </script>
 
 <template>
@@ -25,7 +27,10 @@ defineProps({
         {{ signed(holding.profit_krw) }}원 <span class="rate">{{ rateText(ratePct(holding.profit_krw, holding.cost_krw)) }}</span>
       </div>
     </div>
-    <button class="handle" :aria-label="`${holding.name} 순서 변경 (위/아래 화살표 키)`">
+    <button v-if="editing" class="del-btn" :aria-label="`${holding.name} 삭제`" @click="emit('delete', holding)">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" /></svg>
+    </button>
+    <button v-else class="handle" :aria-label="`${holding.name} 순서 변경 (위/아래 화살표 키)`">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
     </button>
   </li>

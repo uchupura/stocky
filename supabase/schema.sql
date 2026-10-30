@@ -193,7 +193,7 @@ $$;
 --   요청 사항: 누구나 읽기 + 작성 가능
 --   → anon(로그인 안 한 사용자), authenticated(로그인 사용자) 모두
 --     SELECT / INSERT / UPDATE 허용
---   → DELETE 는 정책을 만들지 않아 차단 (필요하면 같은 형식으로 추가)
+--   → DELETE 는 holdings(보유 종목)만 허용, 나머지 테이블은 정책이 없어 차단
 --
 --   ⚠️ 주의: 사이트 주소와 anon 키만 알면 누구나 데이터를 바꿀 수 있다.
 --      목업/데모 용도로만 쓰고, 실제 개인 자산 데이터는 넣지 말 것.
@@ -235,6 +235,9 @@ create policy "holdings: 누구나 추가"
   on public.holdings for insert to anon, authenticated with check (true);
 create policy "holdings: 누구나 수정"
   on public.holdings for update to anon, authenticated using (true) with check (true);
+-- 주식 삭제 기능용 (migrations/002_holdings_delete.sql 과 같은 내용)
+create policy "holdings: 누구나 삭제"
+  on public.holdings for delete to anon, authenticated using (true);
 
 
 -- =====================================================================

@@ -3,21 +3,36 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase'
 
 const FALLBACK_COLOR = '#8b95a1'
 
+// Postgres 에러 코드 → 화면에 보여줄 메시지
+function friendlyError(e, fallback) {
+  if (e?.code === '23505') {
+    // unique 위반: 보유 종목 중복 / 종목 코드 중복
+    return /symbol/.test(e.message || '') ? '같은 종목 코드가 이미 등록되어 있어요.' : '이미 보유 중인 종목이에요.'
+  }
+  if (e?.code === '23514') return '입력값을 다시 확인해 주세요.' // check 제약 위반
+  if (e?.code === '42501') return '권한이 없어요. Supabase RLS 정책을 확인해 주세요.'
+  return e?.message || fallback
+}
+
 /**
- * 포트폴리오 데이터 조회 + 드래그 순서 저장
+ * 포트폴리오 데이터 조회 + 추가/삭제/순서 저장
  *  - portfolio_summary 뷰: 총 평가금액, 수익률, 원금, 국내/해외 금액
  *  - holding_values 뷰: 종목별 평가금액, 수익금, 수익률
- *  - stocks: 로고 색, exchange_rates: 달러 환율 (화면 하단 표시용)
+ *  - stocks: 종목 검색·로고 색, exchange_rates: 달러 환율
  */
 export function usePortfolio() {
   const summary = ref(null)
   const holdings = ref([])
+  const stocks = ref([])
   const usdRate = ref(null)
   const loading = ref(true)
   const error = ref('')
 
-  async function load() {
-    loading.value = true
+  /**
+   * @param {{ silent?: boolean }} opts silent = true 면 로딩 화면 없이 조용히 갱신 (추가/삭제 후)
+   */
+  async function load({ silent = false } = {}) {
+    if (!silent) loading.value = true
     error.value = ''
     try {
       if (!isSupabaseConfigured) {
@@ -40,7 +55,7 @@ export function usePortfolio() {
           .eq('portfolio_id', s.portfolio_id)
           .order('sort_order')
           .order('holding_id'),
-        supabase.from('stocks').select('id, logo_color'),
+        supabase.from('stocks').select('id, symbol, name, market, currency, current_price, logo_color').order('name'),
         supabase.from('exchange_rates').select('rate_to_krw').eq('currency', 'USD').maybeSingle(),
       ])
       for (const r of [h, st, fx]) if (r.error) throw r.error
@@ -48,10 +63,11 @@ export function usePortfolio() {
       const colors = Object.fromEntries(st.data.map((x) => [x.id, x.logo_color]))
       summary.value = s
       holdings.value = h.data.map((x) => ({ ...x, logo_color: colors[x.stock_id] || FALLBACK_COLOR }))
+      stocks.value = st.data
       usdRate.value = fx.data?.rate_to_krw ?? null
     } catch (e) {
       console.error(e)
-      error.value = e.message || '데이터를 불러오지 못했어요.'
+      error.value = friendlyError(e, '데이터를 불러오지 못했어요.')
     } finally {
       loading.value = false
     }
@@ -76,5 +92,53 @@ export function usePortfolio() {
     }
   }
 
-  return { summary, holdings, usdRate, loading, error, load, saveOrder }
+  /**
+   * 보유 종목 추가 (목록 맨 아래에 붙음)
+   * @param {{ stockId?: number, newStock?: object, quantity: number, avgPrice: number }} p
+   *   - stockId: 이미 등록된 종목을 고른 경우
+   *   - newStock: 새 종목 등록 { symbol, name, market, currency, current_price, logo_color }
+   */
+  async function addHolding({ stockId, newStock, quantity, avgPrice }) {
+    try {
+      let id = stockId
+      if (newStock) {
+        const { data, error: e } = await supabase.from('stocks').insert(newStock).select('id').single()
+        if (e) throw e
+        id = data.id
+      }
+
+      const nextOrder = Math.max(0, ...holdings.value.map((h) => h.sort_order)) + 1
+      const { error: e } = await supabase.from('holdings').insert({
+        portfolio_id: summary.value.portfolio_id,
+        stock_id: id,
+        quantity,
+        avg_price: avgPrice,
+        sort_order: nextOrder,
+      })
+      if (e) throw e
+    } catch (e) {
+      console.error(e)
+      // 새 종목은 등록됐는데 보유 추가만 실패한 경우에도 목록을 최신으로
+      await load({ silent: true })
+      throw new Error(friendlyError(e, '추가하지 못했어요.'))
+    }
+    await load({ silent: true })
+  }
+
+  /** 보유 종목 삭제 (종목 정보 stocks 는 남겨둠) */
+  async function removeHolding(holdingId) {
+    const { error: e, count } = await supabase
+      .from('holdings')
+      .delete({ count: 'exact' })
+      .eq('id', holdingId)
+    if (e) throw new Error(friendlyError(e, '삭제하지 못했어요.'))
+    // RLS 에 삭제 정책이 없으면 에러 없이 0건 삭제됨 (또는 다른 곳에서 이미 삭제됨)
+    if (count === 0) {
+      await load({ silent: true })
+      throw new Error('삭제되지 않았어요. 이미 삭제됐거나 삭제 권한(002_holdings_delete.sql)이 없어요.')
+    }
+    await load({ silent: true })
+  }
+
+  return { summary, holdings, stocks, usdRate, loading, error, load, saveOrder, addHolding, removeHolding }
 }

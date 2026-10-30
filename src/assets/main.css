@@ -222,7 +222,7 @@ a { color: inherit; text-decoration: none; }
   pointer-events: none;
   transition: opacity 0.2s, transform 0.2s;
   white-space: nowrap;
-  z-index: 20;
+  z-index: 40; /* 창(sheet) 위에도 보이게 */
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
@@ -367,3 +367,152 @@ a { color: inherit; text-decoration: none; }
   font-weight: 600;
 }
 .retry:active { opacity: 0.85; }
+
+/* ===== 목록 상단 버튼 (편집 / + 추가) ===== */
+.list-actions { display: flex; align-items: center; gap: 8px; }
+.chip-btn {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.chip-btn.on { background: var(--text); color: var(--card); }
+.chip-btn.primary { background: var(--badge-bg); color: var(--badge-text); }
+.chip-btn:active { opacity: 0.8; }
+@media (max-width: 479px) { .list-head .hint { display: none; } }
+.list-head { align-items: center; }
+
+/* 편집 모드 삭제 버튼 (손잡이 자리) */
+.del-btn {
+  flex: 0 0 auto;
+  width: 32px; height: 40px;
+  display: grid; place-items: center;
+  color: var(--up);
+  border-radius: 8px;
+}
+.del-btn:hover, .del-btn:focus-visible { background: rgba(240, 68, 82, 0.1); }
+.del-btn:focus-visible { outline: 2px solid var(--up); }
+@media (max-width: 360px) { .del-btn { width: 26px; } }
+
+/* ===== 창 (모바일: 아래 시트 / 데스크톱: 가운데) ===== */
+body.sheet-open { overflow: hidden; }
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.sheet {
+  width: 100%;
+  max-width: 480px;
+  max-height: 88vh;
+  overflow-y: auto;
+  background: var(--card);
+  border-radius: 24px 24px 0 0;
+  padding: 20px 20px calc(20px + env(safe-area-inset-bottom));
+  outline: none;
+}
+.sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.sheet-head h3 { font-size: 20px; font-weight: 700; }
+.sheet-close { width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; color: var(--sub); }
+.sheet-close:hover { background: var(--bg); }
+
+/* 열고 닫을 때 애니메이션 */
+.sheet-enter-active, .sheet-leave-active { transition: opacity 0.2s; }
+.sheet-enter-active .sheet, .sheet-leave-active .sheet { transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1); }
+.sheet-enter-from, .sheet-leave-to { opacity: 0; }
+.sheet-enter-from .sheet, .sheet-leave-to .sheet { transform: translateY(40px); }
+
+@media (min-width: 640px) {
+  .sheet-backdrop { align-items: center; padding: 24px; }
+  .sheet { border-radius: 24px; padding: 24px; }
+  .sheet-enter-from .sheet, .sheet-leave-to .sheet { transform: scale(0.96); }
+}
+
+/* ===== 창 안의 내용 ===== */
+.sheet-body { display: flex; flex-direction: column; gap: 14px; }
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field-label { font-size: 14px; color: var(--sub); font-weight: 500; }
+.field-input {
+  display: flex; align-items: center; gap: 8px;
+  height: 52px;
+  padding: 0 16px;
+  border-radius: 14px;
+  background: var(--bg);
+  color: var(--sub);
+  border: 2px solid transparent;
+  transition: border-color 0.15s;
+}
+.field-input:focus-within { border-color: var(--blue); }
+.field-input input {
+  flex: 1; min-width: 0;
+  border: 0; outline: 0; background: none;
+  font: inherit; font-size: 17px; font-weight: 600;
+  color: var(--text);
+}
+.field-input input::placeholder { color: var(--sub); font-weight: 500; }
+.field-input .suffix { font-size: 16px; font-weight: 600; color: var(--sub); }
+.field-error { font-size: 13px; color: var(--up); }
+
+.segment { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px; border-radius: 14px; background: var(--bg); }
+.segment button { height: 42px; border-radius: 10px; font-size: 15px; font-weight: 600; color: var(--sub); }
+.segment button.on { background: var(--card); color: var(--text); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08); }
+
+/* 종목 검색 결과 */
+.pick-list { list-style: none; max-height: 46vh; overflow-y: auto; margin: 0 -8px; }
+.pick {
+  width: 100%;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 8px;
+  border-radius: 14px;
+  text-align: left;
+}
+.pick:hover:not(:disabled) { background: var(--press); }
+.pick:disabled { opacity: 0.45; cursor: not-allowed; }
+.logo.sm { width: 36px; height: 36px; font-size: 14px; }
+.pick-name { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; font-size: 16px; font-weight: 600; }
+.pick-name .text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-sub { font-size: 13px; color: var(--sub); white-space: nowrap; }
+.pick-empty { padding: 20px 8px; text-align: center; color: var(--sub); font-size: 14px; }
+
+.link-btn { font-size: 14px; color: var(--sub); padding: 6px 0; }
+.link-btn b { color: var(--blue); }
+.back-btn { align-self: flex-start; font-size: 14px; color: var(--sub); padding: 2px 0; }
+
+.picked { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 14px; background: var(--bg); }
+.picked > div { min-width: 0; }
+
+.preview { font-size: 14px; color: var(--sub); }
+.preview b { color: var(--text); }
+.preview b.up { color: var(--up); }
+.preview b.down { color: var(--down); }
+.form-error {
+  font-size: 14px; color: var(--up);
+  padding: 10px 12px; border-radius: 12px;
+  background: rgba(240, 68, 82, 0.08);
+  word-break: keep-all;
+}
+
+/* 하단 버튼 */
+.primary-btn, .secondary-btn, .danger-btn {
+  height: 54px;
+  border-radius: 14px;
+  font-size: 17px;
+  font-weight: 700;
+}
+.primary-btn { background: var(--blue); color: #fff; margin-top: 4px; }
+.secondary-btn { background: var(--bg); color: var(--text); }
+.danger-btn { background: var(--up); color: #fff; }
+.primary-btn:disabled, .danger-btn:disabled { opacity: 0.6; cursor: default; }
+.btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.confirm-text { font-size: 17px; line-height: 1.6; word-break: keep-all; }
+.confirm-text .pick-sub { white-space: normal; }
+.state .retry { display: inline-block; }
