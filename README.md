@@ -26,7 +26,8 @@ stocky/
 │   │   ├── PortfolioSummary.vue  # 총 평가금액·수익률·원금·국내/해외 비중
 │   │   ├── HoldingList.vue       # 보유 주식 목록 + 드래그 앤 드롭
 │   │   ├── HoldingItem.vue       # 종목 한 줄 (USD 배지, 편집 모드 삭제 버튼)
-│   │   ├── AddHoldingSheet.vue   # 주식 추가 창 (종목 검색 / 새 종목 등록)
+│   │   ├── AddHoldingSheet.vue   # 주식 추가 창 (종목 검색 / 새 종목 등록 / 매수 환율)
+│   │   ├── EditHoldingSheet.vue  # 보유 정보 수정 창 (수량 · 평균 단가 · 매수 환율)
 │   │   └── BaseSheet.vue         # 공통 창 (모바일 하단 시트 / 데스크톱 가운데)
 │   ├── composables/
 │   │   └── usePortfolio.js       # Supabase 조회 · 추가 · 삭제 · 순서 저장
@@ -36,9 +37,11 @@ stocky/
 │   └── utils/
 │       └── format.js             # 금액·수익률 표시 형식
 ├── api/
-│   └── quote.js                  # GET /api/quote — 현재가 (Vercel Function)
+│   ├── quote.js                  # GET  /api/quote   — 종목 현재가 (+ 해외는 환율)
+│   └── refresh.js                # POST /api/refresh — 보유 종목 현재가·환율 일괄 갱신
 ├── server/
-│   └── kis.js                    # KIS 토큰·시세 조회 (서버 전용, 조회 API 만 사용)
+│   ├── kis.js                    # KIS 토큰·시세 조회 (서버 전용, 조회 API 만 사용)
+│   └── refresh.js                # 현재가·환율 갱신 → stocks·exchange_rates 저장 (1분 제한)
 ├── scripts/
 │   └── sync-stock-master.mjs     # 전체 상장 종목 목록 → stock_master 동기화
 ├── supabase/
@@ -66,8 +69,9 @@ Supabase 대시보드 → **SQL Editor** 에서 순서대로 실행합니다.
 | `003_stock_master.sql` | 전체 종목 목록 `stock_master`, KIS 토큰 보관 `kis_tokens`(서버 전용), `stocks.exchange` |
 | `004_search_stock_master.sql` | 종목 검색 함수 (한글·영문명·코드, 정확도순) |
 | `005_search_ticker.sql` | 티커 검색 개선 — `BRK.B`·`BRK-B`·`BRKB` 모두 검색, 티커 일치 우선 정렬 (004 함수 교체) |
+| `006_fx_and_refresh.sql` | 매수 환율 `holdings.avg_fx_rate`, 환차익·달러 기준 수익 계산 |
 
-> 처음부터 새로 만드는 경우: `schema.sql` → `seed.sql` → `003` → `004` → `005` 순서 (`002` 는 건너뜀)
+> 처음부터 새로 만드는 경우: `schema.sql` → `seed.sql` → `003` → `004` → `005` → `006` 순서 (`002` 는 건너뜀)
 
 ### 종목 목록 채우기 (최초 1회 + 가끔)
 
@@ -123,7 +127,10 @@ npm run dev
 | 포트폴리오 요약 | 총 평가금액, 총 수익금/수익률, 투자 원금, 국내·해외 평가금액과 비중 |
 | 보유 종목 목록 | 종목명, 보유 수량, 평가금액, 수익금/수익률 (데스크톱은 평균 단가·현재가 추가) |
 | 주식 추가 | `+ 추가` → **전체 상장 종목 검색**(한글·영문·코드·티커, 예: "애플"·"aapl" → AAPL, "BRK.B" → 버크셔 B) → 현재가 자동 조회 → 보유 수량·평균 단가 입력 (예상 평가금액 미리보기). 검색에 없으면 직접 입력 |
+| 주식 수정 | `편집` → 종목을 누르면 보유 수량 · 평균 단가 · 매수 환율(해외) 수정 |
 | 주식 삭제 | `편집` → 종목의 휴지통 버튼 → 확인 후 삭제 |
+| 현재가 · 환율 | 페이지를 열 때와 `새로고침` 때 보유 종목 현재가와 원/달러 환율을 KIS 에서 갱신 (서버가 1분에 한 번만 실제 조회) |
+| 해외 주식 수익 | 원화 수익 = 현재가×**현재 환율** − 평균 단가×**매수 환율** (환차익 포함) + **달러 기준 수익률** 함께 표시. 매수 환율 미입력 시 현재 환율로 계산(환율 손익 0) |
 | USD 배지 | 해외(미국) 주식은 종목명 옆에 `USD` 표시 |
 | 순서 변경 | `≡` 손잡이를 드래그 (마우스·터치), 또는 손잡이 선택 후 키보드 `↑` `↓` → DB 에 저장 |
 | 반응형 | 모바일(~639px) / 태블릿(640~1023px) / 데스크톱(1024px~) 레이아웃 |

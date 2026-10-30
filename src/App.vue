@@ -4,13 +4,14 @@ import AppHeader from './components/AppHeader.vue'
 import PortfolioSummary from './components/PortfolioSummary.vue'
 import HoldingList from './components/HoldingList.vue'
 import AddHoldingSheet from './components/AddHoldingSheet.vue'
+import EditHoldingSheet from './components/EditHoldingSheet.vue'
 import BaseSheet from './components/BaseSheet.vue'
 import { usePortfolio } from './composables/usePortfolio'
-import { fmt, qtyText } from './utils/format'
+import { fmt, qtyText, fxText, timeText } from './utils/format'
 
 const {
-  summary, holdings, stocks, usdRate, loading, error,
-  load, saveOrder, addHolding, removeHolding,
+  summary, holdings, stocks, usdRate, fxUpdatedAt, refreshing, loading, error,
+  load, saveOrder, addHolding, updateHolding, removeHolding, refreshPrices,
 } = usePortfolio()
 
 // ===== 토스트 =====
@@ -81,7 +82,57 @@ async function onAdd(payload) {
   }
 }
 
-onMounted(load)
+// ===== 수정 (수량 · 평균 단가 · 매수 환율) =====
+const editTarget = ref(null)
+const editSaving = ref(false)
+const editError = ref('')
+function openEdit(h) {
+  editError.value = ''
+  editTarget.value = h
+}
+async function onEdit(payload) {
+  const h = editTarget.value
+  if (!h) return
+  editSaving.value = true
+  editError.value = ''
+  try {
+    await updateHolding(h.holding_id, payload)
+    editTarget.value = null
+    toast(`${h.name} 보유 정보를 수정했어요`)
+  } catch (e) {
+    editError.value = e.message
+  } finally {
+    editSaving.value = false
+  }
+}
+
+// ===== 현재가 · 환율 갱신 =====
+const refreshError = ref('')
+async function refresh({ manual = false } = {}) {
+  refreshError.value = ''
+  try {
+    const r = await refreshPrices()
+    if (!r) return
+    if (r.failed?.length) {
+      refreshError.value = `일부 종목 갱신 실패: ${r.failed.map((f) => f.symbol).join(', ')}`
+    } else if (manual) {
+      toast(r.skipped ? '방금 갱신한 최신 값이에요' : '현재가·환율을 갱신했어요')
+    }
+  } catch (e) {
+    console.error(e)
+    refreshError.value = '현재가를 갱신하지 못했어요. 저장된 값으로 보여드려요.'
+  }
+}
+async function reloadAll() {
+  await load()
+  if (!error.value) refresh({ manual: true })
+}
+
+// 처음 열 때: 저장된 값으로 바로 보여주고 → 뒤에서 현재가·환율 갱신
+onMounted(async () => {
+  await load()
+  if (!error.value) refresh()
+})
 </script>
 
 <template>
@@ -118,6 +169,7 @@ onMounted(load)
           <h2>보유 주식<span>{{ holdings.length }}</span></h2>
           <div class="list-actions">
             <span v-if="!editing && holdings.length" class="hint">≡ 를 끌어서 순서 변경</span>
+            <span v-if="editing" class="hint">종목을 누르면 수정</span>
             <button v-if="holdings.length" class="chip-btn" :class="{ on: editing }" @click="editing = !editing">
               {{ editing ? '완료' : '편집' }}
             </button>
@@ -143,13 +195,23 @@ onMounted(load)
           :editing="editing"
           @reorder="onReorder"
           @delete="deleteTarget = $event"
+          @edit="openEdit"
         />
+        <p v-if="holdings.some((h) => h.fx_missing)" class="fx-note">
+          <span class="fx-missing">환율 미입력</span>
+          매수 환율을 넣지 않은 해외 종목은 환율 손익 없이 계산돼요 · <b>편집</b>에서 종목을 눌러 입력
+        </p>
       </section>
 
       <div class="foot">
-        <span v-if="usdRate">※ 1달러 = {{ fmt(usdRate) }}원 기준</span>
-        <span v-else />
-        <button @click="load()">새로고침</button>
+        <span>
+          <template v-if="refreshing">현재가·환율 갱신 중…</template>
+          <template v-else-if="usdRate">
+            ※ 1달러 = {{ fxText(usdRate) }}원<template v-if="fxUpdatedAt"> · {{ timeText(fxUpdatedAt) }} 기준</template>
+          </template>
+          <span v-if="refreshError" class="foot-error">{{ refreshError }}</span>
+        </span>
+        <button :disabled="refreshing" @click="reloadAll">새로고침</button>
       </div>
     </template>
   </main>
@@ -159,11 +221,21 @@ onMounted(load)
     :open="addOpen"
     :stocks="stocks"
     :held-symbols="heldSymbols"
-    :usd-rate="usdRate ? Number(usdRate) : null"
+    :usd-rate="usdRate"
     :saving="adding"
     :server-error="addError"
     @close="addOpen = false"
     @submit="onAdd"
+  />
+
+  <!-- 보유 정보 수정 -->
+  <EditHoldingSheet
+    :holding="editTarget"
+    :usd-rate="usdRate"
+    :saving="editSaving"
+    :server-error="editError"
+    @close="editTarget = null"
+    @submit="onEdit"
   />
 
   <!-- 삭제 확인 -->

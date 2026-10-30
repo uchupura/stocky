@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { refreshMarket } from '../lib/api'
 
 const FALLBACK_COLOR = '#8b95a1'
 
@@ -25,6 +26,8 @@ export function usePortfolio() {
   const holdings = ref([])
   const stocks = ref([])
   const usdRate = ref(null)
+  const fxUpdatedAt = ref(null) // 현재가·환율 마지막 갱신 시각
+  const refreshing = ref(false)
   const loading = ref(true)
   const error = ref('')
 
@@ -56,7 +59,7 @@ export function usePortfolio() {
           .order('sort_order')
           .order('holding_id'),
         supabase.from('stocks').select('id, symbol, name, market, exchange, currency, current_price, logo_color').order('name'),
-        supabase.from('exchange_rates').select('rate_to_krw').eq('currency', 'USD').maybeSingle(),
+        supabase.from('exchange_rates').select('rate_to_krw, updated_at').eq('currency', 'USD').maybeSingle(),
       ])
       for (const r of [h, st, fx]) if (r.error) throw r.error
 
@@ -64,7 +67,8 @@ export function usePortfolio() {
       summary.value = s
       holdings.value = h.data.map((x) => ({ ...x, logo_color: colors[x.stock_id] || FALLBACK_COLOR }))
       stocks.value = st.data
-      usdRate.value = fx.data?.rate_to_krw ?? null
+      usdRate.value = fx.data?.rate_to_krw != null ? Number(fx.data.rate_to_krw) : null
+      fxUpdatedAt.value = fx.data?.updated_at ?? null
     } catch (e) {
       console.error(e)
       error.value = friendlyError(e, '데이터를 불러오지 못했어요.')
@@ -132,7 +136,7 @@ export function usePortfolio() {
    *   - stockId: 이미 등록된 종목을 고른 경우
    *   - newStock: 직접 입력으로 새 종목 등록 { symbol, name, market, currency, current_price, logo_color }
    */
-  async function addHolding({ master, price, stockId, newStock, quantity, avgPrice }) {
+  async function addHolding({ master, price, stockId, newStock, quantity, avgPrice, avgFxRate = null }) {
     try {
       let id = stockId
       if (master) {
@@ -150,6 +154,7 @@ export function usePortfolio() {
         quantity,
         avg_price: avgPrice,
         sort_order: nextOrder,
+        ...(avgFxRate ? { avg_fx_rate: avgFxRate } : {}), // 해외 주식 매수 환율
       })
       if (e) throw e
     } catch (e) {
@@ -159,6 +164,43 @@ export function usePortfolio() {
       throw new Error(friendlyError(e, '추가하지 못했어요.'))
     }
     await load({ silent: true })
+  }
+
+  /**
+   * 보유 정보 수정 (수량 · 평균 단가 · 매수 환율)
+   * @param {number} holdingId
+   * @param {{ quantity: number, avgPrice: number, avgFxRate?: number|null }} p avgFxRate 는 해외 주식만
+   */
+  async function updateHolding(holdingId, { quantity, avgPrice, avgFxRate }) {
+    const patch = { quantity, avg_price: avgPrice }
+    if (avgFxRate !== undefined) patch.avg_fx_rate = avgFxRate
+    const { error: e, count } = await supabase
+      .from('holdings')
+      .update(patch, { count: 'exact' })
+      .eq('id', holdingId)
+    if (e) throw new Error(friendlyError(e, '수정하지 못했어요.'))
+    if (count === 0) {
+      await load({ silent: true })
+      throw new Error('수정되지 않았어요. 이미 삭제된 종목일 수 있어요.')
+    }
+    await load({ silent: true })
+  }
+
+  /**
+   * 보유 종목 현재가 + 환율 갱신 (서버 /api/refresh) → 화면 다시 불러오기
+   * 서버가 1분에 한 번만 실제로 조회하므로 자주 불러도 괜찮다.
+   * @returns {Promise<{ skipped: boolean, failed: Array }>}
+   */
+  async function refreshPrices() {
+    if (refreshing.value) return null
+    refreshing.value = true
+    try {
+      const r = await refreshMarket()
+      await load({ silent: true })
+      return r
+    } finally {
+      refreshing.value = false
+    }
   }
 
   /** 보유 종목 삭제 (종목 정보 stocks 는 남겨둠) */
@@ -176,5 +218,8 @@ export function usePortfolio() {
     await load({ silent: true })
   }
 
-  return { summary, holdings, stocks, usdRate, loading, error, load, saveOrder, addHolding, removeHolding }
+  return {
+    summary, holdings, stocks, usdRate, fxUpdatedAt, refreshing, loading, error,
+    load, saveOrder, addHolding, updateHolding, removeHolding, refreshPrices,
+  }
 }

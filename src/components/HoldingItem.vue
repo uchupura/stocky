@@ -1,15 +1,37 @@
 <script setup>
 import { fmt, signed, tone, rateText, ratePct, unitPrice, qtyText } from '../utils/format'
 
-defineProps({
+const props = defineProps({
   holding: { type: Object, required: true },
-  editing: { type: Boolean, default: false }, // 편집 모드: 손잡이 대신 삭제 버튼
+  editing: { type: Boolean, default: false }, // 편집 모드: 손잡이 대신 삭제 버튼, 줄을 누르면 수정
 })
-const emit = defineEmits(['delete'])
+const emit = defineEmits(['delete', 'edit'])
+
+const pct = (r) => `${r > 0 ? '+' : ''}${Number(r).toFixed(1)}%`
+
+function onRowClick(e) {
+  if (!props.editing || e.target.closest('.del-btn')) return
+  emit('edit', props.holding)
+}
+function onRowKey(e) {
+  if (props.editing && (e.key === 'Enter' || e.key === ' ') && e.target === e.currentTarget) {
+    e.preventDefault()
+    emit('edit', props.holding)
+  }
+}
 </script>
 
 <template>
-  <li class="item" :data-id="holding.holding_id">
+  <li
+    class="item"
+    :class="{ editable: editing }"
+    :data-id="holding.holding_id"
+    :tabindex="editing ? 0 : undefined"
+    :role="editing ? 'button' : undefined"
+    :aria-label="editing ? `${holding.name} 보유 정보 수정` : undefined"
+    @click="onRowClick"
+    @keydown="onRowKey"
+  >
     <div class="logo" :style="{ background: holding.logo_color }">{{ holding.name[0] }}</div>
     <div class="info">
       <div class="name">
@@ -25,6 +47,11 @@ const emit = defineEmits(['delete'])
       <div class="value">{{ fmt(holding.value_krw) }}원</div>
       <div class="pl" :class="tone(holding.profit_krw)">
         {{ signed(holding.profit_krw) }}원 <span class="rate">{{ rateText(ratePct(holding.profit_krw, holding.cost_krw)) }}</span>
+        <!-- 해외: 달러 기준 수익률 (원화 수익은 환율 손익 포함) -->
+        <span v-if="holding.is_overseas && holding.profit_rate_local != null" class="pl-local">
+          <span v-if="holding.fx_missing" class="fx-missing" title="매수 환율을 입력하면 환율 손익이 반영돼요">환율 미입력</span>
+          달러 <b :class="tone(holding.profit_local)">{{ pct(ratePct(holding.profit_local, holding.cost_local)) }}</b>
+        </span>
       </div>
     </div>
     <button v-if="editing" class="del-btn" :aria-label="`${holding.name} 삭제`" @click="emit('delete', holding)">

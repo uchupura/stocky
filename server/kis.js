@@ -113,8 +113,9 @@ export async function getQuote({ symbol, market, exchange }) {
       changeRate: Number(o.prdy_ctrt),
     }
   } else {
-    // 해외주식 현재체결가 (HHDFS00000300), EXCD = NAS / NYS / AMS
-    const o = await kisGet('/uapi/overseas-price/v1/quotations/price', 'HHDFS00000300', {
+    // 해외주식 현재가상세 (HHDFS76200200), EXCD = NAS / NYS / AMS
+    //   last 현재가, base 전일 종가, t_rate 당일 환율(원/달러) — 환율도 함께 받는다
+    const o = await kisGet('/uapi/overseas-price/v1/quotations/price-detail', 'HHDFS76200200', {
       AUTH: '',
       EXCD: exchange,
       SYMB: symbol,
@@ -122,12 +123,14 @@ export async function getQuote({ symbol, market, exchange }) {
     const last = Number(o.last)
     const base = Number(o.base)
     const price = last > 0 ? last : base // 장 시작 전 등 체결가가 비어 있으면 전일 종가
+    const change = base > 0 ? price - base : 0
     value = {
       symbol, market, exchange, currency: 'USD',
       price,
       prevClose: base,
-      change: Number(o.diff) * (o.sign === '5' || o.sign === '4' ? -1 : 1),
-      changeRate: Number(o.rate),
+      change: Math.round(change * 10000) / 10000,
+      changeRate: base > 0 ? Math.round((change / base) * 10000) / 100 : 0,
+      fxRate: Number(o.t_rate) > 0 ? Number(o.t_rate) : null,
     }
   }
   if (!(value.price > 0)) throw new Error('현재가를 받지 못했어요. 거래 정지 종목일 수 있어요.')

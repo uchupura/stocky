@@ -3,7 +3,7 @@ import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import BaseSheet from './BaseSheet.vue'
 import { supabase } from '../lib/supabase'
 import { fetchQuote } from '../lib/api'
-import { fmt, signed, tone, unitPrice } from '../utils/format'
+import { fmt, signed, tone, unitPrice, fxText } from '../utils/format'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -31,7 +31,7 @@ const touched = ref(false) // 한 번 "추가하기"를 눌러야 에러 문구 
 const body = ref(null)
 
 function emptyForm() {
-  return { name: '', symbol: '', market: 'KR', price: '', qty: '', avg: '' }
+  return { name: '', symbol: '', market: 'KR', price: '', qty: '', avg: '', fx: '' }
 }
 
 function reset() {
@@ -130,7 +130,11 @@ async function pick(c) {
   quote.value = { status: 'loading' }
   try {
     const q = await fetchQuote(c.symbol, c.market)
-    if (seq === quoteSeq) quote.value = { status: 'ok', ...q }
+    if (seq === quoteSeq) {
+      quote.value = { status: 'ok', ...q }
+      // 해외: 매수 환율 기본값 = 오늘 환율 (다른 날 샀으면 직접 수정)
+      if (c.market === 'US' && !form.value.fx) form.value.fx = String(q.fxRate ?? props.usdRate ?? '')
+    }
   } catch (e) {
     if (seq === quoteSeq) quote.value = { status: 'error', message: e.message }
   }
@@ -156,6 +160,11 @@ const unit = computed(() => (currency.value === 'USD' ? '$' : '원'))
 const needManualPrice = computed(() => mode.value === 'new' || quote.value.status === 'error')
 
 const price = computed(() => (quote.value.status === 'ok' ? quote.value.price : num(form.value.price)))
+// 현재 환율: 현재가와 함께 받은 값 → 없으면 DB 환율
+const nowFx = computed(() => (quote.value.status === 'ok' && quote.value.fxRate) || props.usdRate)
+function useTodayFx() {
+  if (nowFx.value) form.value.fx = String(nowFx.value)
+}
 
 const errors = computed(() => {
   const e = {}
@@ -169,6 +178,8 @@ const errors = computed(() => {
   if (needManualPrice.value && !(num(f.price) > 0)) e.price = '현재가를 숫자로 입력해 주세요'
   if (!(num(f.qty) > 0)) e.qty = '보유 수량은 0보다 커야 해요'
   if (!(num(f.avg) >= 0)) e.avg = '평균 단가를 숫자로 입력해 주세요'
+  // 매수 환율은 비워도 됨 (현재 환율로 대신 계산)
+  if (currency.value === 'USD' && String(f.fx).trim() !== '' && !(num(f.fx) > 0)) e.fx = '환율을 숫자로 입력해 주세요'
   return e
 })
 const valid = computed(() => Object.keys(errors.value).length === 0)
@@ -178,10 +189,11 @@ const showErr = (k) => touched.value && errors.value[k]
 const preview = computed(() => {
   const q = num(form.value.qty)
   const a = num(form.value.avg)
-  const fx = currency.value === 'USD' ? props.usdRate : 1
+  const fx = currency.value === 'USD' ? nowFx.value : 1
   if (!(q > 0) || !(a >= 0) || !(price.value > 0) || !fx) return null
+  const buyFx = currency.value === 'USD' && num(form.value.fx) > 0 ? num(form.value.fx) : fx
   const value = q * price.value * fx
-  return { value, profit: value - q * a * fx }
+  return { value, profit: value - q * a * buyFx }
 })
 
 function submit() {
@@ -189,6 +201,7 @@ function submit() {
   if (!valid.value || props.saving || quote.value.status === 'loading') return
   const f = form.value
   const base = { quantity: num(f.qty), avgPrice: num(f.avg) }
+  if (currency.value === 'USD' && num(f.fx) > 0) base.avgFxRate = num(f.fx)
   if (mode.value === 'new') {
     const symbol = f.symbol.trim().toUpperCase()
     emit('submit', {
@@ -325,6 +338,17 @@ const rateText = (r) => `${r > 0 ? '+' : ''}${Number(r).toFixed(2)}%`
         <div class="field-input"><input v-model="form.avg" inputmode="decimal" placeholder="0" autocomplete="off"><span class="suffix">{{ unit }}</span></div>
         <span v-if="showErr('avg')" class="field-error">{{ errors.avg }}</span>
       </label>
+      <div v-if="currency === 'USD'" class="field">
+        <label class="field-label" for="add-fx">
+          매수 환율 <span class="field-hint">증권사 앱의 "매입 환율" · 비우면 현재 환율로 계산</span>
+        </label>
+        <div class="field-input">
+          <input id="add-fx" v-model="form.fx" inputmode="decimal" :placeholder="nowFx ? `오늘 ${fxText(nowFx)}` : '예: 1300'" autocomplete="off">
+          <span class="suffix">원</span>
+        </div>
+        <span v-if="showErr('fx')" class="field-error">{{ errors.fx }}</span>
+        <button v-if="nowFx && String(form.fx) !== String(nowFx)" type="button" class="link-btn fx-today" @click="useTodayFx">오늘 환율 {{ fxText(nowFx) }}원 넣기</button>
+      </div>
 
       <p v-if="preview" class="preview">
         예상 평가금액 <b>{{ fmt(preview.value) }}원</b> · 수익금

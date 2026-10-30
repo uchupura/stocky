@@ -7,8 +7,8 @@ const props = defineProps({
   editing: { type: Boolean, default: false },
 })
 // reorder: 바뀐 순서(holding_id 배열) → 부모가 DB 에 저장
-// delete: 편집 모드에서 삭제 버튼을 누른 종목
-const emit = defineEmits(['reorder', 'delete'])
+// delete: 편집 모드에서 삭제 버튼을 누른 종목 / edit: 편집 모드에서 누른 종목
+const emit = defineEmits(['reorder', 'delete', 'edit'])
 
 const listEl = ref(null)
 let drag = null
@@ -151,6 +151,7 @@ onBeforeUnmount(() => {
       :holding="h"
       :editing="editing"
       @delete="emit('delete', $event)"
+      @edit="emit('edit', $event)"
     />
   </ul>
 </template>

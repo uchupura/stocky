@@ -18,6 +18,16 @@ export const ratePct = (profit, cost) => (Number(cost) ? (Number(profit) / Numbe
 export const unitPrice = (currency, v) =>
   currency === 'USD' ? `$${Number(v).toFixed(2)}` : `${fmt(v)}원`
 
+// 환율: 1,335.2 처럼 소수점 2자리까지
+export const fxText = (r) => Number(r).toLocaleString('ko-KR', { maximumFractionDigits: 2 })
+
+// 시각: 오늘이면 "14:56", 아니면 "10/30 14:56"
+export const timeText = (iso) => {
+  const d = new Date(iso)
+  const hm = d.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false })
+  return d.toDateString() === new Date().toDateString() ? hm : `${d.getMonth() + 1}/${d.getDate()} ${hm}`
+}
+
 // 주식 수: 정수면 그대로, 소수점 주식이면 최대 6자리
 export const qtyText = (q) =>
   `${Number(q).toLocaleString('ko-KR', { maximumFractionDigits: 6 })}주`

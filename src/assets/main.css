@@ -526,3 +526,45 @@ body.sheet-open { overflow: hidden; }
 .quote-price { color: var(--text); font-weight: 700; margin-right: 4px; }
 .picked .up { color: var(--up); }
 .picked .down { color: var(--down); }
+
+/* ===== 환율 · 달러 수익률 ===== */
+.pl-local { display: block; margin-top: 2px; font-size: 12px; font-weight: 500; color: var(--sub); }
+.pl-local b { font-weight: 600; }
+.pl-local b.up { color: var(--up); }
+.pl-local b.down { color: var(--down); }
+.pl-local b.flat { color: var(--sub); }
+.fx-missing {
+  display: inline-block;
+  font-size: 11px; font-weight: 600; line-height: 1;
+  padding: 2px 4px; border-radius: 4px;
+  background: rgba(255, 159, 26, 0.15); color: #d97706;
+  margin-right: 2px;
+}
+.field-hint { font-size: 12px; color: var(--sub); font-weight: 400; margin-left: 4px; }
+.fx-today { align-self: flex-start; padding: 0; }
+.item.editable { cursor: pointer; }
+.item.editable:hover { background: var(--press); }
+.item.editable:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.foot-error { display: block; color: var(--up); margin-top: 2px; }
+.foot button:disabled { opacity: 0.5; }
+@media (min-width: 1024px) { .pl-local { font-size: 13px; } }
+/* 모바일: "환율 미입력" 글자 대신 작은 주황 점 (종목 이름 칸 확보) */
+@media (max-width: 639px) {
+  .pl-local .fx-missing {
+    font-size: 0; width: 7px; height: 7px; padding: 0;
+    border-radius: 50%; background: #f59e0b;
+    vertical-align: 1px; margin-right: 4px;
+  }
+}
+/* 480px 미만: 수익률을 수익금 아래 줄로 (금액이 커져도 종목 이름 칸 확보) */
+@media (max-width: 479px) {
+  .amount .rate { display: block; }
+}
+.fx-note { padding: 8px 12px 4px; font-size: 12px; color: var(--sub); line-height: 1.6; word-break: keep-all; }
+.fx-note b { color: var(--text); font-weight: 600; }
+@media (max-width: 639px) {
+  .fx-note .fx-missing {
+    font-size: 0; width: 7px; height: 7px; padding: 0;
+    border-radius: 50%; background: #f59e0b; vertical-align: 1px; margin-right: 4px;
+  }
+}
