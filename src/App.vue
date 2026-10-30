@@ -60,7 +60,7 @@ async function confirmDelete() {
 const addOpen = ref(false)
 const adding = ref(false)
 const addError = ref('')
-const heldStockIds = computed(() => holdings.value.map((h) => h.stock_id))
+const heldSymbols = computed(() => holdings.value.map((h) => h.symbol))
 
 function openAdd() {
   addError.value = ''
@@ -158,7 +158,7 @@ onMounted(load)
   <AddHoldingSheet
     :open="addOpen"
     :stocks="stocks"
-    :held-stock-ids="heldStockIds"
+    :held-symbols="heldSymbols"
     :usd-rate="usdRate ? Number(usdRate) : null"
     :saving="adding"
     :server-error="addError"

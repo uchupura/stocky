@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "sync:stocks": "node scripts/sync-stock-master.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",
@@ -14,6 +15,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.10",
+    "fflate": "^0.8.3",
     "vite": "^8.3.5"
   }
 }

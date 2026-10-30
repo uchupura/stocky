@@ -55,7 +55,7 @@ export function usePortfolio() {
           .eq('portfolio_id', s.portfolio_id)
           .order('sort_order')
           .order('holding_id'),
-        supabase.from('stocks').select('id, symbol, name, market, currency, current_price, logo_color').order('name'),
+        supabase.from('stocks').select('id, symbol, name, market, exchange, currency, current_price, logo_color').order('name'),
         supabase.from('exchange_rates').select('rate_to_krw').eq('currency', 'USD').maybeSingle(),
       ])
       for (const r of [h, st, fx]) if (r.error) throw r.error
@@ -93,15 +93,51 @@ export function usePortfolio() {
   }
 
   /**
-   * 보유 종목 추가 (목록 맨 아래에 붙음)
-   * @param {{ stockId?: number, newStock?: object, quantity: number, avgPrice: number }} p
-   *   - stockId: 이미 등록된 종목을 고른 경우
-   *   - newStock: 새 종목 등록 { symbol, name, market, currency, current_price, logo_color }
+   * 검색에서 고른 종목을 stocks 에 반영하고 id 를 돌려준다.
+   *   이미 등록된 종목 → 현재가·거래소만 최신으로 갱신 / 처음 보는 종목 → 새로 등록
    */
-  async function addHolding({ stockId, newStock, quantity, avgPrice }) {
+  async function upsertStock(master, price) {
+    const now = new Date().toISOString()
+    const existing = stocks.value.find((s) => s.symbol === master.symbol)
+    if (existing) {
+      const patch = { exchange: master.exchange }
+      if (price > 0) Object.assign(patch, { current_price: price, price_updated_at: now })
+      const { error: e } = await supabase.from('stocks').update(patch).eq('id', existing.id)
+      if (e) throw e
+      return existing.id
+    }
+    if (!(price > 0)) throw new Error('현재가가 있어야 새 종목을 등록할 수 있어요.')
+    const { data, error: e } = await supabase
+      .from('stocks')
+      .insert({
+        symbol: master.symbol,
+        name: master.name,
+        market: master.market,
+        currency: master.currency,
+        exchange: master.exchange,
+        current_price: price,
+        price_updated_at: now,
+        logo_color: master.logo_color,
+      })
+      .select('id')
+      .single()
+    if (e) throw e
+    return data.id
+  }
+
+  /**
+   * 보유 종목 추가 (목록 맨 아래에 붙음)
+   * @param {{ master?: object, price?: number, stockId?: number, newStock?: object, quantity: number, avgPrice: number }} p
+   *   - master + price: 전체 종목 검색에서 고른 경우 (현재가 자동 조회 값)
+   *   - stockId: 이미 등록된 종목을 고른 경우
+   *   - newStock: 직접 입력으로 새 종목 등록 { symbol, name, market, currency, current_price, logo_color }
+   */
+  async function addHolding({ master, price, stockId, newStock, quantity, avgPrice }) {
     try {
       let id = stockId
-      if (newStock) {
+      if (master) {
+        id = await upsertStock(master, price)
+      } else if (newStock) {
         const { data, error: e } = await supabase.from('stocks').insert(newStock).select('id').single()
         if (e) throw e
         id = data.id

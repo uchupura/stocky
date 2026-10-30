@@ -1,12 +1,14 @@
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import BaseSheet from './BaseSheet.vue'
+import { supabase } from '../lib/supabase'
+import { fetchQuote } from '../lib/api'
 import { fmt, signed, tone, unitPrice } from '../utils/format'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
-  stocks: { type: Array, default: () => [] },        // 등록된 전체 종목
-  heldStockIds: { type: Array, default: () => [] },  // 이미 보유 중인 종목 id
+  stocks: { type: Array, default: () => [] },        // 이미 등록된 종목 (검색어 없을 때 표시)
+  heldSymbols: { type: Array, default: () => [] },   // 이미 보유 중인 종목 코드
   usdRate: { type: Number, default: null },
   saving: { type: Boolean, default: false },
   serverError: { type: String, default: '' },        // DB 저장 실패 메시지
@@ -16,9 +18,10 @@ const emit = defineEmits(['close', 'submit'])
 // 새 종목 로고 색 (종목 코드로 고정 선택)
 const PALETTE = ['#3182f6', '#f04452', '#00b8a9', '#ff9f1a', '#8b5cf6', '#14b8a6', '#ec4899', '#64748b']
 const hash = (s) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0)
+const EXCHANGE_LABEL = { KOSPI: '코스피', KOSDAQ: '코스닥', NAS: '나스닥', NYS: '뉴욕', AMS: '아멕스' }
 
 const step = ref('search') // search: 종목 고르기 / form: 수량·단가 입력
-const mode = ref('existing') // existing: 등록된 종목 / new: 새 종목 등록
+const mode = ref('pick')   // pick: 검색에서 고름 / new: 직접 입력으로 새 종목 등록
 const query = ref('')
 const selected = ref(null)
 const form = ref(emptyForm())
@@ -31,9 +34,12 @@ function emptyForm() {
 
 function reset() {
   step.value = 'search'
-  mode.value = 'existing'
+  mode.value = 'pick'
   query.value = ''
+  results.value = []
+  searchError.value = ''
   selected.value = null
+  quote.value = { status: 'idle' }
   form.value = emptyForm()
   touched.value = false
 }
@@ -45,26 +51,93 @@ watch(step, async () => {
   body.value?.querySelector('input')?.focus()
 })
 
-// ===== 1단계: 종목 검색 =====
-const held = computed(() => new Set(props.heldStockIds))
-const results = computed(() => {
-  const q = query.value.trim().toLowerCase()
-  const list = q
-    ? props.stocks.filter((s) => s.name.toLowerCase().includes(q) || s.symbol.toLowerCase().includes(q))
-    : props.stocks
-  return list.slice(0, 30)
-})
+// ===== 1단계: 종목 검색 (전체 상장 종목 · stock_master) =====
+const held = computed(() => new Set(props.heldSymbols))
+const registered = computed(() => Object.fromEntries(props.stocks.map((s) => [s.symbol, s])))
 
-function pick(s) {
-  if (held.value.has(s.id)) return
-  selected.value = s
-  mode.value = 'existing'
+const results = ref([])
+const searching = ref(false)
+const searchError = ref('')
+let searchTimer
+let searchSeq = 0
+
+watch(query, (q) => {
+  clearTimeout(searchTimer)
+  searchError.value = ''
+  if (!q.trim()) {
+    results.value = []
+    searching.value = false
+    return
+  }
+  searching.value = true
+  searchTimer = setTimeout(() => runSearch(q), 250) // 입력을 잠깐 멈추면 검색
+})
+onBeforeUnmount(() => clearTimeout(searchTimer))
+
+async function runSearch(q) {
+  const seq = ++searchSeq
+  const { data, error } = await supabase.rpc('search_stock_master', { q: q.trim(), max_results: 20 })
+  if (seq !== searchSeq) return // 더 최근 검색이 있으면 무시
+  searching.value = false
+  if (error) {
+    console.error(error)
+    searchError.value = '검색하지 못했어요. 잠시 후 다시 시도해 주세요.'
+    results.value = []
+    return
+  }
+  results.value = data
+}
+
+// 화면에 보여줄 후보 (검색 결과 또는 등록된 종목)
+function fromMaster(m) {
+  const reg = registered.value[m.symbol]
+  return {
+    symbol: m.symbol,
+    market: m.market,
+    exchange: m.exchange,
+    currency: m.currency,
+    name: reg?.name || m.name_ko || m.name_en,
+    nameSub: m.name_ko && m.name_en ? m.name_en : '',
+    isEtf: m.security_type === 'etf',
+    logo_color: reg?.logo_color || PALETTE[hash(m.symbol) % PALETTE.length],
+  }
+}
+function fromRegistered(s) {
+  return {
+    symbol: s.symbol, market: s.market, exchange: s.exchange, currency: s.currency,
+    name: s.name, nameSub: '', isEtf: false, logo_color: s.logo_color || PALETTE[hash(s.symbol) % PALETTE.length],
+  }
+}
+const candidates = computed(() =>
+  query.value.trim() ? results.value.map(fromMaster) : props.stocks.map(fromRegistered),
+)
+
+// ===== 종목 선택 → 현재가 자동 조회 =====
+const quote = ref({ status: 'idle' }) // idle | loading | ok | error
+let quoteSeq = 0
+
+async function pick(c) {
+  if (held.value.has(c.symbol)) return
+  selected.value = c
+  mode.value = 'pick'
+  form.value = emptyForm()
   touched.value = false
   step.value = 'form'
+
+  const seq = ++quoteSeq
+  quote.value = { status: 'loading' }
+  try {
+    const q = await fetchQuote(c.symbol, c.market)
+    if (seq === quoteSeq) quote.value = { status: 'ok', ...q }
+  } catch (e) {
+    if (seq === quoteSeq) quote.value = { status: 'error', message: e.message }
+  }
 }
+
 function startNew() {
   mode.value = 'new'
   selected.value = null
+  quote.value = { status: 'idle' }
   form.value = { ...emptyForm(), name: query.value.trim() }
   touched.value = false
   step.value = 'form'
@@ -77,6 +150,10 @@ const num = (v) => (String(v).trim() === '' ? NaN : Number(String(v).replace(/,/
 const market = computed(() => (mode.value === 'new' ? form.value.market : selected.value?.market))
 const currency = computed(() => (market.value === 'US' ? 'USD' : 'KRW'))
 const unit = computed(() => (currency.value === 'USD' ? '$' : '원'))
+// 현재가를 직접 입력해야 하는 경우: 새 종목 직접 등록 / 자동 조회 실패
+const needManualPrice = computed(() => mode.value === 'new' || quote.value.status === 'error')
+
+const price = computed(() => (quote.value.status === 'ok' ? quote.value.price : num(form.value.price)))
 
 const errors = computed(() => {
   const e = {}
@@ -86,8 +163,8 @@ const errors = computed(() => {
     const sym = f.symbol.trim().toUpperCase()
     if (!sym) e.symbol = '종목 코드를 입력해 주세요'
     else if (props.stocks.some((s) => s.symbol.toUpperCase() === sym)) e.symbol = '이미 등록된 종목 코드예요. 검색에서 골라 주세요'
-    if (!(num(f.price) >= 0)) e.price = '현재가를 숫자로 입력해 주세요'
   }
+  if (needManualPrice.value && !(num(f.price) > 0)) e.price = '현재가를 숫자로 입력해 주세요'
   if (!(num(f.qty) > 0)) e.qty = '보유 수량은 0보다 커야 해요'
   if (!(num(f.avg) >= 0)) e.avg = '평균 단가를 숫자로 입력해 주세요'
   return e
@@ -99,16 +176,15 @@ const showErr = (k) => touched.value && errors.value[k]
 const preview = computed(() => {
   const q = num(form.value.qty)
   const a = num(form.value.avg)
-  const price = mode.value === 'new' ? num(form.value.price) : Number(selected.value?.current_price)
   const fx = currency.value === 'USD' ? props.usdRate : 1
-  if (!(q > 0) || !(a >= 0) || !(price >= 0) || !fx) return null
-  const value = q * price * fx
+  if (!(q > 0) || !(a >= 0) || !(price.value > 0) || !fx) return null
+  const value = q * price.value * fx
   return { value, profit: value - q * a * fx }
 })
 
 function submit() {
   touched.value = true
-  if (!valid.value || props.saving) return
+  if (!valid.value || props.saving || quote.value.status === 'loading') return
   const f = form.value
   const base = { quantity: num(f.qty), avgPrice: num(f.avg) }
   if (mode.value === 'new') {
@@ -126,13 +202,23 @@ function submit() {
       },
     })
   } else {
-    emit('submit', { ...base, label: selected.value.name, stockId: selected.value.id })
+    const c = selected.value
+    emit('submit', {
+      ...base,
+      label: c.name,
+      price: price.value,
+      master: {
+        symbol: c.symbol, name: c.name, market: c.market, currency: c.currency,
+        exchange: c.exchange, logo_color: c.logo_color,
+      },
+    })
   }
 }
 
 const title = computed(() =>
   step.value === 'search' ? '주식 추가' : mode.value === 'new' ? '새 종목 등록' : '보유 정보 입력',
 )
+const rateText = (r) => `${r > 0 ? '+' : ''}${Number(r).toFixed(2)}%`
 </script>
 
 <template>
@@ -141,42 +227,58 @@ const title = computed(() =>
     <div v-if="step === 'search'" ref="body" class="sheet-body">
       <div class="field-input">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-        <input v-model="query" type="search" placeholder="종목 이름 또는 코드" aria-label="종목 검색" autocomplete="off">
+        <input v-model="query" type="search" placeholder="종목 이름 또는 코드 (예: 삼성전자, 애플, AAPL)" aria-label="종목 검색" autocomplete="off">
       </div>
 
-      <ul class="pick-list">
-        <li v-for="s in results" :key="s.id">
-          <button class="pick" :disabled="held.has(s.id)" @click="pick(s)">
-            <span class="logo sm" :style="{ background: s.logo_color || '#8b95a1' }">{{ s.name[0] }}</span>
-            <span class="pick-name">
-              <span class="text">{{ s.name }}</span>
-              <span v-if="s.market === 'US'" class="badge">USD</span>
+      <p v-if="!query.trim()" class="pick-caption">등록된 종목 · 검색하면 전체 상장 종목에서 찾아요</p>
+
+      <ul class="pick-list" :aria-busy="searching">
+        <li v-for="c in candidates" :key="`${c.market}:${c.symbol}`">
+          <button class="pick" :disabled="held.has(c.symbol)" @click="pick(c)">
+            <span class="logo sm" :style="{ background: c.logo_color }">{{ c.name[0] }}</span>
+            <span class="pick-main">
+              <span class="pick-name">
+                <span class="text">{{ c.name }}</span>
+                <span v-if="c.market === 'US'" class="badge">USD</span>
+                <span v-if="c.isEtf" class="badge etf">ETF</span>
+              </span>
+              <span v-if="c.nameSub" class="pick-sub text">{{ c.nameSub }}</span>
             </span>
-            <span class="pick-sub">{{ held.has(s.id) ? '보유 중' : s.symbol }}</span>
+            <span class="pick-sub">{{ held.has(c.symbol) ? '보유 중' : `${c.symbol} · ${EXCHANGE_LABEL[c.exchange] || c.market}` }}</span>
           </button>
         </li>
-        <li v-if="!results.length" class="pick-empty">'{{ query }}' 검색 결과가 없어요</li>
+        <li v-if="searching" class="pick-empty">검색 중…</li>
+        <li v-else-if="searchError" class="pick-empty">{{ searchError }}</li>
+        <li v-else-if="query.trim() && !candidates.length" class="pick-empty">'{{ query }}' 검색 결과가 없어요</li>
       </ul>
 
-      <button class="link-btn" @click="startNew">찾는 종목이 없나요? <b>새 종목 등록</b></button>
+      <button class="link-btn" @click="startNew">찾는 종목이 없나요? <b>직접 입력해서 등록</b></button>
     </div>
 
     <!-- 2단계: 수량·단가 입력 -->
     <form v-else ref="body" class="sheet-body" novalidate @submit.prevent="submit">
       <button type="button" class="back-btn" @click="step = 'search'">← 종목 다시 고르기</button>
 
-      <div v-if="mode === 'existing'" class="picked">
-        <span class="logo sm" :style="{ background: selected.logo_color || '#8b95a1' }">{{ selected.name[0] }}</span>
-        <div>
+      <div v-if="mode === 'pick'" class="picked">
+        <span class="logo sm" :style="{ background: selected.logo_color }">{{ selected.name[0] }}</span>
+        <div class="pick-main">
           <div class="pick-name">
             <span class="text">{{ selected.name }}</span>
             <span v-if="selected.market === 'US'" class="badge">USD</span>
           </div>
-          <div class="pick-sub">{{ selected.symbol }} · 현재가 {{ unitPrice(selected.currency, selected.current_price) }}</div>
+          <div class="pick-sub">
+            {{ selected.symbol }} · {{ EXCHANGE_LABEL[selected.exchange] || selected.market }} ·
+            <template v-if="quote.status === 'loading'">현재가 불러오는 중…</template>
+            <template v-else-if="quote.status === 'ok'">
+              현재가 <b class="quote-price">{{ unitPrice(quote.currency, quote.price) }}</b>
+              <span :class="tone(quote.change)">{{ rateText(quote.changeRate) }}</span>
+            </template>
+            <template v-else-if="quote.status === 'error'">현재가를 불러오지 못했어요</template>
+          </div>
         </div>
       </div>
 
-      <template v-else>
+      <template v-if="mode === 'new'">
         <label class="field">
           <span class="field-label">종목 이름</span>
           <div class="field-input"><input v-model="form.name" placeholder="예: Alphabet" autocomplete="off"></div>
@@ -194,12 +296,13 @@ const title = computed(() =>
             <button type="button" role="radio" :aria-checked="form.market === 'US'" :class="{ on: form.market === 'US' }" @click="form.market = 'US'">해외 (USD)</button>
           </div>
         </div>
-        <label class="field">
-          <span class="field-label">현재가</span>
-          <div class="field-input"><input v-model="form.price" inputmode="decimal" placeholder="0" autocomplete="off"><span class="suffix">{{ unit }}</span></div>
-          <span v-if="showErr('price')" class="field-error">{{ errors.price }}</span>
-        </label>
       </template>
+
+      <label v-if="needManualPrice" class="field">
+        <span class="field-label">현재가{{ quote.status === 'error' ? ' (자동 조회 실패 — 직접 입력)' : '' }}</span>
+        <div class="field-input"><input v-model="form.price" inputmode="decimal" placeholder="0" autocomplete="off"><span class="suffix">{{ unit }}</span></div>
+        <span v-if="showErr('price')" class="field-error">{{ errors.price }}</span>
+      </label>
 
       <label class="field">
         <span class="field-label">보유 수량</span>
@@ -218,7 +321,9 @@ const title = computed(() =>
       </p>
       <p v-if="serverError" class="form-error" role="alert">{{ serverError }}</p>
 
-      <button class="primary-btn" type="submit" :disabled="saving">{{ saving ? '추가하는 중…' : '추가하기' }}</button>
+      <button class="primary-btn" type="submit" :disabled="saving || quote.status === 'loading'">
+        {{ saving ? '추가하는 중…' : quote.status === 'loading' ? '현재가 불러오는 중…' : '추가하기' }}
+      </button>
     </form>
   </BaseSheet>
 </template>

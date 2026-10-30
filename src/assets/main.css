@@ -516,3 +516,13 @@ body.sheet-open { overflow: hidden; }
 .confirm-text { font-size: 17px; line-height: 1.6; word-break: keep-all; }
 .confirm-text .pick-sub { white-space: normal; }
 .state .retry { display: inline-block; }
+
+/* ===== 실제 종목 검색 ===== */
+.pick-caption { font-size: 13px; color: var(--sub); margin-bottom: -6px; }
+.pick-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pick-main .pick-sub.text { overflow: hidden; text-overflow: ellipsis; }
+.badge.etf { background: var(--bg); color: var(--sub); }
+.picked .pick-sub { white-space: normal; line-height: 1.5; }
+.quote-price { color: var(--text); font-weight: 700; margin-right: 4px; }
+.picked .up { color: var(--up); }
+.picked .down { color: var(--down); }
