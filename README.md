@@ -5,10 +5,11 @@
 
 - 프론트엔드: Vue 3 + Vite
 - 백엔드/DB: Supabase (Postgres)
-- 서버 API: Vercel Functions (`api/`) — 한국투자증권 KIS Open API 로 실시간 현재가 조회
+- 서버 API: Vercel Functions (`api/`) — 한국투자증권 KIS Open API 로 실시간 현재가 조회, 네이버 로그인
+- 로그인: 네이버 로그인 → 허용한 계정(`ALLOWED_EMAILS`)만 본인 포트폴리오 보기
 
-> ⚠️ 현재 RLS 정책은 **누구나 읽기·쓰기·보유 종목 삭제 가능**(데모용)입니다. 실제 자산 정보는 넣지 마세요.
-> 실서비스 전환 시 `supabase/schema.sql` 하단의 "권장안"을 적용하세요.
+> 🔒 `007_auth_owner.sql` 적용 후에는 로그인한 **본인**만 포트폴리오를 읽고 쓸 수 있습니다.
+> 적용 전(001~006)에는 **누구나 읽기·쓰기 가능**하니 실제 자산 정보를 넣기 전에 반드시 적용하세요.
 
 ## 폴더 구조
 
@@ -22,7 +23,8 @@ stocky/
 │   ├── App.vue                   # 페이지 전체 (로딩/에러/정상 화면, 토스트)
 │   ├── assets/main.css           # 전체 스타일 (반응형, 다크 모드)
 │   ├── components/
-│   │   ├── AppHeader.vue         # 상단 바 (로고, 메뉴, 검색)
+│   │   ├── AppHeader.vue         # 상단 바 (로고, 메뉴, 검색, 이름·로그아웃)
+│   │   ├── LoginScreen.vue       # 로그인 화면 (네이버 로그인 버튼)
 │   │   ├── PortfolioSummary.vue  # 총 평가금액·수익률·원금·국내/해외 비중
 │   │   ├── HoldingList.vue       # 보유 주식 목록 + 드래그 앤 드롭
 │   │   ├── HoldingItem.vue       # 종목 한 줄 (USD 배지, 편집 모드 삭제 버튼)
@@ -30,6 +32,7 @@ stocky/
 │   │   ├── EditHoldingSheet.vue  # 보유 정보 수정 창 (수량 · 평균 단가 · 매수 환율)
 │   │   └── BaseSheet.vue         # 공통 창 (모바일 하단 시트 / 데스크톱 가운데)
 │   ├── composables/
+│   │   ├── useAuth.js            # 로그인 상태 · 로그아웃
 │   │   └── usePortfolio.js       # Supabase 조회 · 추가 · 삭제 · 순서 저장
 │   ├── lib/
 │   │   ├── supabase.js           # Supabase 클라이언트 (.env 값 사용)
@@ -37,9 +40,12 @@ stocky/
 │   └── utils/
 │       └── format.js             # 금액·수익률 표시 형식
 ├── api/
+│   ├── auth/naver/login.js       # GET  /api/auth/naver/login    — 네이버 로그인 시작
+│   ├── auth/naver/callback.js    # GET  /api/auth/naver/callback — 네이버 로그인 완료 → 세션 발급
 │   ├── quote.js                  # GET  /api/quote   — 종목 현재가 (+ 해외는 환율)
 │   └── refresh.js                # POST /api/refresh — 보유 종목 현재가·환율 일괄 갱신
 ├── server/
+│   ├── auth.js                   # 허용 목록·토큰 검사, Supabase 세션 발급 (서버 전용)
 │   ├── kis.js                    # KIS 토큰·시세 조회 (서버 전용, 조회 API 만 사용)
 │   └── refresh.js                # 현재가·환율 갱신 → stocks·exchange_rates 저장 (1분 제한)
 ├── scripts/
@@ -70,8 +76,9 @@ Supabase 대시보드 → **SQL Editor** 에서 순서대로 실행합니다.
 | `004_search_stock_master.sql` | 종목 검색 함수 (한글·영문명·코드, 정확도순) |
 | `005_search_ticker.sql` | 티커 검색 개선 — `BRK.B`·`BRK-B`·`BRKB` 모두 검색, 티커 일치 우선 정렬 (004 함수 교체) |
 | `006_fx_and_refresh.sql` | 매수 환율 `holdings.avg_fx_rate`, 환차익·달러 기준 수익 계산 |
+| `007_auth_owner.sql` | 🔒 로그인한 본인만 — `portfolios.owner_id`, anon 접근 차단, 본인 포트폴리오만 읽기·쓰기 |
 
-> 처음부터 새로 만드는 경우: `schema.sql` → `seed.sql` → `003` → `004` → `005` → `006` 순서 (`002` 는 건너뜀)
+> 처음부터 새로 만드는 경우: `schema.sql` → `seed.sql` → `003` → `004` → `005` → `006` → `007` 순서 (`002` 는 건너뜀)
 
 ### 종목 목록 채우기 (최초 1회 + 가끔)
 
@@ -114,6 +121,9 @@ npm run dev
 | `KIS_APP_SECRET` | 서버 전용 | 한국투자증권 KIS Developers App Secret |
 | `KIS_ENV` | 서버 전용 | `real`(실전) 또는 `mock`(모의투자) |
 | `SUPABASE_SERVICE_ROLE_KEY` | 서버 전용 | Supabase service_role 키 — RLS 를 무시하는 관리자 키 |
+| `NAVER_CLIENT_ID` | 서버 전용 | 네이버 개발자센터 애플리케이션 Client ID |
+| `NAVER_CLIENT_SECRET` | 서버 전용 | 네이버 개발자센터 애플리케이션 Client Secret |
+| `ALLOWED_EMAILS` | 서버 전용 | 로그인 허용할 네이버 **연락처 이메일** (쉼표로 여러 개) |
 
 - `.env` 는 `.gitignore` 에 등록되어 있어 Git 에 올라가지 않습니다.
 - `VITE_` 로 시작하는 값만 브라우저로 전달됩니다. 서버 전용 키는 `api/`·`server/`·`scripts/` 에서만 읽습니다.
@@ -136,10 +146,21 @@ npm run dev
 | 반응형 | 모바일(~639px) / 태블릿(640~1023px) / 데스크톱(1024px~) 레이아웃 |
 | 다크 모드 | 기기 설정에 따라 라이트/다크 테마 자동 적용 |
 
+## 네이버 로그인 설정
+
+1. [네이버 개발자센터](https://developers.naver.com) → Application → 애플리케이션 등록
+   - 사용 API: **네이버 로그인**, 제공 정보: **연락처 이메일 주소(필수)**, 이름
+   - 서비스 환경 **PC 웹** — Callback URL:
+     - `http://localhost:5173/api/auth/naver/callback` (로컬 — 브라우저도 `localhost:5173` 으로 접속)
+     - `https://<배포 주소>/api/auth/naver/callback`
+2. Client ID / Secret 과 허용할 연락처 이메일을 `.env`(로컬)·Vercel 환경변수에 등록
+3. 첫 로그인 때 주인 없는 포트폴리오가 그 계정에 연결됩니다 (`007` 적용 후)
+   - 같은 이메일이라도 처음 로그인한 네이버 계정과 다르면 거부합니다
+
 ## 배포 (Vercel)
 
 1. [vercel.com](https://vercel.com) → **Add New… → Project** → `uchupura/stocky` Import
-2. **Environment Variables** 에 위 "환경변수" 표의 6개 모두 등록 (서버 전용 키 포함)
+2. **Environment Variables** 에 위 "환경변수" 표의 9개 모두 등록 (서버 전용 키는 **Sensitive** 권장)
 3. **Deploy** (Framework·빌드 설정은 `vercel.json` 에 지정되어 있어 기본값 그대로)
 
 이후 `main` 브랜치에 push 할 때마다 자동으로 다시 배포됩니다.

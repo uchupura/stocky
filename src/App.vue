@@ -1,11 +1,13 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import PortfolioSummary from './components/PortfolioSummary.vue'
 import HoldingList from './components/HoldingList.vue'
 import AddHoldingSheet from './components/AddHoldingSheet.vue'
 import EditHoldingSheet from './components/EditHoldingSheet.vue'
 import BaseSheet from './components/BaseSheet.vue'
+import LoginScreen from './components/LoginScreen.vue'
+import { useAuth } from './composables/useAuth'
 import { usePortfolio } from './composables/usePortfolio'
 import { fmt, qtyText, fxText, timeText } from './utils/format'
 
@@ -13,6 +15,18 @@ const {
   summary, holdings, stocks, usdRate, fxUpdatedAt, refreshing, loading, error,
   load, saveOrder, addHolding, updateHolding, removeHolding, refreshPrices,
 } = usePortfolio()
+
+// ===== 로그인 =====
+const { session, displayName, ready, signOut, loginUrl } = useAuth()
+
+// 네이버 로그인 실패 시 서버가 ?login_error=코드 로 돌려보냄 → 한 번 읽고 주소에서 지움
+const loginError = ref(new URLSearchParams(location.search).get('login_error') || '')
+if (loginError.value) history.replaceState(null, '', location.pathname + location.hash)
+
+async function onLogout() {
+  await signOut()
+  toast('로그아웃했어요')
+}
 
 // ===== 토스트 =====
 const toastMsg = ref('')
@@ -128,17 +142,30 @@ async function reloadAll() {
   if (!error.value) refresh({ manual: true })
 }
 
-// 처음 열 때: 저장된 값으로 바로 보여주고 → 뒤에서 현재가·환율 갱신
-onMounted(async () => {
-  await load()
-  if (!error.value) refresh()
-})
+// 로그인되면: 저장된 값으로 바로 보여주고 → 뒤에서 현재가·환율 갱신
+// (로그인 전에는 데이터를 요청하지 않음)
+watch(
+  () => session.value?.user?.id,
+  async (uid) => {
+    if (!uid) return
+    loginError.value = ''
+    await load()
+    if (!error.value) refresh()
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
-  <AppHeader />
+  <AppHeader :user-name="session ? displayName : ''" @logout="onLogout" />
 
-  <main class="app">
+  <!-- 로그인 상태 확인 중: 아무것도 그리지 않음 -->
+  <template v-if="!ready" />
+
+  <!-- 로그인 안 됨 -->
+  <LoginScreen v-else-if="!session" :login-url="loginUrl" :error-code="loginError" />
+
+  <main v-else class="app">
     <h1 class="page-title d-only">내 투자</h1>
 
     <!-- 불러오는 중 -->

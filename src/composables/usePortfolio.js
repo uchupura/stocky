@@ -49,7 +49,7 @@ export function usePortfolio() {
         .limit(1)
         .maybeSingle()
       if (e1) throw e1
-      if (!s) throw new Error('포트폴리오가 아직 없어요. seed.sql 을 실행했는지 확인해 주세요.')
+      if (!s) throw new Error('이 계정에 연결된 포트폴리오가 없어요.')
 
       const [h, st, fx] = await Promise.all([
         supabase
