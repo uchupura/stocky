@@ -42,7 +42,14 @@ export async function refreshPrices() {
     try {
       const q = await getQuote(s)
       if (q.fxRate) fxRate = q.fxRate
-      const { error } = await db.from('stocks').update({ current_price: q.price, price_updated_at: now }).eq('id', s.id)
+      const patch = { current_price: q.price, price_updated_at: now }
+      if (q.prevClose > 0) patch.prev_close = q.prevClose // 오늘 수익률 계산용 (009)
+      let { error } = await db.from('stocks').update(patch).eq('id', s.id)
+      // 009 적용 전이면 prev_close 칸이 없음 → 현재가만 저장
+      if (error && /prev_close/.test(error.message || '')) {
+        delete patch.prev_close
+        ;({ error } = await db.from('stocks').update(patch).eq('id', s.id))
+      }
       if (error) throw error
       updated++
     } catch (e) {

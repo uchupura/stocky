@@ -20,6 +20,14 @@ export function fetchQuote(symbol, market) {
 }
 
 /**
+ * 하루 주가 그래프 (가장 최근 거래일)
+ * @returns {Promise<{ sessionDate: string, prevClose: number|null, points: Array<[number, number]>, cached: boolean }>}
+ */
+export function fetchChart(symbol, market) {
+  return call(`/api/chart?${new URLSearchParams({ symbol, market })}`, {}, '그래프를 가져오지 못했어요.')
+}
+
+/**
  * 보유 종목 현재가 + 원/달러 환율 일괄 갱신 (서버가 1분에 한 번만 실제 조회)
  * @returns {Promise<{ skipped: boolean, updated?: number, failed?: Array<{symbol, error}>, fxRate: number, updatedAt: string }>}
  */

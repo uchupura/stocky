@@ -64,7 +64,11 @@ async function getToken() {
   return memToken.token
 }
 
-async function kisGet(path, trId, params) {
+/**
+ * KIS 시세 조회 (GET)
+ * @param {{ output?: string }} opts 응답에서 꺼낼 항목 (기본 'output', 분봉 API 는 'output2')
+ */
+export async function kisGet(path, trId, params, { output = 'output' } = {}) {
   const c = config()
   const token = await getToken()
   const res = await fetch(`${c.base}${path}?${new URLSearchParams(params)}`, {
@@ -78,10 +82,10 @@ async function kisGet(path, trId, params) {
     },
   })
   const d = await res.json().catch(() => ({}))
-  if (!res.ok || d.rt_cd !== '0' || !d.output) {
+  if (!res.ok || d.rt_cd !== '0' || !d[output]) {
     throw new Error(`KIS 시세 조회 실패 (HTTP ${res.status}) ${d.msg1 || ''}`.trim())
   }
-  return d.output
+  return d[output]
 }
 
 // ----- 현재가 (같은 종목 30초 캐시) -----

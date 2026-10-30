@@ -222,6 +222,7 @@ function submit() {
       ...base,
       label: c.name,
       price: price.value,
+      prevClose: quote.value.status === 'ok' ? quote.value.prevClose : null,
       master: {
         symbol: c.symbol, name: c.name, market: c.market, currency: c.currency,
         exchange: c.exchange, logo_color: c.logo_color,

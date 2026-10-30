@@ -58,14 +58,18 @@ export function usePortfolio() {
           .eq('portfolio_id', s.portfolio_id)
           .order('sort_order')
           .order('holding_id'),
-        supabase.from('stocks').select('id, symbol, name, market, exchange, currency, current_price, logo_color').order('name'),
+        supabase.from('stocks').select('id, symbol, name, market, exchange, currency, current_price, prev_close, logo_color').order('name'),
         supabase.from('exchange_rates').select('rate_to_krw, updated_at').eq('currency', 'USD').maybeSingle(),
       ])
       for (const r of [h, st, fx]) if (r.error) throw r.error
 
-      const colors = Object.fromEntries(st.data.map((x) => [x.id, x.logo_color]))
+      const byStock = Object.fromEntries(st.data.map((x) => [x.id, x]))
       summary.value = s
-      holdings.value = h.data.map((x) => ({ ...x, logo_color: colors[x.stock_id] || FALLBACK_COLOR }))
+      holdings.value = h.data.map((x) => ({
+        ...x,
+        logo_color: byStock[x.stock_id]?.logo_color || FALLBACK_COLOR,
+        prev_close: byStock[x.stock_id]?.prev_close ?? null, // 전일 종가 (시세 보기 · 오늘 수익률)
+      }))
       stocks.value = st.data
       usdRate.value = fx.data?.rate_to_krw != null ? Number(fx.data.rate_to_krw) : null
       fxUpdatedAt.value = fx.data?.updated_at ?? null
@@ -100,12 +104,13 @@ export function usePortfolio() {
    * 검색에서 고른 종목을 stocks 에 반영하고 id 를 돌려준다.
    *   이미 등록된 종목 → 현재가·거래소만 최신으로 갱신 / 처음 보는 종목 → 새로 등록
    */
-  async function upsertStock(master, price) {
+  async function upsertStock(master, price, prevClose) {
     const now = new Date().toISOString()
     const existing = stocks.value.find((s) => s.symbol === master.symbol)
     if (existing) {
       const patch = { exchange: master.exchange }
       if (price > 0) Object.assign(patch, { current_price: price, price_updated_at: now })
+      if (prevClose > 0) patch.prev_close = prevClose
       const { error: e } = await supabase.from('stocks').update(patch).eq('id', existing.id)
       if (e) throw e
       return existing.id
@@ -121,6 +126,7 @@ export function usePortfolio() {
         exchange: master.exchange,
         current_price: price,
         price_updated_at: now,
+        ...(prevClose > 0 ? { prev_close: prevClose } : {}),
         logo_color: master.logo_color,
       })
       .select('id')
@@ -136,11 +142,11 @@ export function usePortfolio() {
    *   - stockId: 이미 등록된 종목을 고른 경우
    *   - newStock: 직접 입력으로 새 종목 등록 { symbol, name, market, currency, current_price, logo_color }
    */
-  async function addHolding({ master, price, stockId, newStock, quantity, avgPrice, avgFxRate = null }) {
+  async function addHolding({ master, price, prevClose, stockId, newStock, quantity, avgPrice, avgFxRate = null }) {
     try {
       let id = stockId
       if (master) {
-        id = await upsertStock(master, price)
+        id = await upsertStock(master, price, prevClose)
       } else if (newStock) {
         const { data, error: e } = await supabase.from('stocks').insert(newStock).select('id').single()
         if (e) throw e

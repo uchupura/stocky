@@ -5,6 +5,8 @@ import HoldingItem from './HoldingItem.vue'
 const props = defineProps({
   holdings: { type: Array, required: true },
   editing: { type: Boolean, default: false },
+  view: { type: String, default: 'value' },       // 'value' 평가 / 'quote' 시세
+  charts: { type: Object, default: () => ({}) },  // 시세 보기 그래프 (키: "KR:005930")
 })
 // reorder: 바뀐 순서(holding_id 배열) → 부모가 DB 에 저장
 // delete: 편집 모드에서 삭제 버튼을 누른 종목 / edit: 편집 모드에서 누른 종목
@@ -150,6 +152,8 @@ onBeforeUnmount(() => {
       :key="h.holding_id"
       :holding="h"
       :editing="editing"
+      :view="view"
+      :chart="charts[`${h.market}:${h.symbol}`] || null"
       @delete="emit('delete', $event)"
       @edit="emit('edit', $event)"
     />
