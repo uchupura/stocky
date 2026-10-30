@@ -14,9 +14,9 @@ export async function GET(request) {
   const symbol = (url.searchParams.get('symbol') || '').trim().toUpperCase()
   const market = (url.searchParams.get('market') || '').trim().toUpperCase()
 
-  // 입력값 검사 (국내: 6자리 코드, 해외: 영문·숫자 티커)
+  // 입력값 검사 (국내: 6자리 코드, 해외: 영문·숫자 티커 — 클래스 주식은 KIS 표기 "BRK/B")
   if (!['KR', 'US'].includes(market)) return json({ error: 'market 은 KR 또는 US 여야 해요.' }, 400)
-  const pattern = market === 'KR' ? /^[0-9A-Z]{6}$/ : /^[A-Z0-9.\-]{1,12}$/
+  const pattern = market === 'KR' ? /^[0-9A-Z]{6}$/ : /^[A-Z0-9.\-/]{1,12}$/
   if (!pattern.test(symbol)) return json({ error: '종목 코드 형식이 올바르지 않아요.' }, 400)
 
   try {

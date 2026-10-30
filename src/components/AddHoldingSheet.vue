@@ -19,6 +19,8 @@ const emit = defineEmits(['close', 'submit'])
 const PALETTE = ['#3182f6', '#f04452', '#00b8a9', '#ff9f1a', '#8b5cf6', '#14b8a6', '#ec4899', '#64748b']
 const hash = (s) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 0)
 const EXCHANGE_LABEL = { KOSPI: '코스피', KOSDAQ: '코스닥', NAS: '나스닥', NYS: '뉴욕', AMS: '아멕스' }
+// 화면 표시용 티커: KIS 는 클래스 주식을 "BRK/B" 로 저장 → 익숙한 "BRK.B" 로 보여줌 (저장값은 그대로)
+const tickerText = (c) => (c.market === 'US' ? c.symbol.replace(/\//g, '.') : c.symbol)
 
 const step = ref('search') // search: 종목 고르기 / form: 수량·단가 입력
 const mode = ref('pick')   // pick: 검색에서 고름 / new: 직접 입력으로 새 종목 등록
@@ -227,7 +229,16 @@ const rateText = (r) => `${r > 0 ? '+' : ''}${Number(r).toFixed(2)}%`
     <div v-if="step === 'search'" ref="body" class="sheet-body">
       <div class="field-input">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-        <input v-model="query" type="search" placeholder="종목 이름 또는 코드 (예: 삼성전자, 애플, AAPL)" aria-label="종목 검색" autocomplete="off">
+        <!-- v-model 대신 @input: v-model 은 한글 조합 중에는 값을 바꾸지 않아
+             휴대폰 키보드에서 "애플"을 쳐도 검색이 시작되지 않는 문제가 있음 -->
+        <input
+          :value="query"
+          type="search"
+          placeholder="종목 이름·코드·티커 (예: 삼성전자, 애플, AAPL, BRK.B)"
+          aria-label="종목 검색"
+          autocomplete="off"
+          @input="query = $event.target.value"
+        >
       </div>
 
       <p v-if="!query.trim()" class="pick-caption">등록된 종목 · 검색하면 전체 상장 종목에서 찾아요</p>
@@ -244,7 +255,7 @@ const rateText = (r) => `${r > 0 ? '+' : ''}${Number(r).toFixed(2)}%`
               </span>
               <span v-if="c.nameSub" class="pick-sub text">{{ c.nameSub }}</span>
             </span>
-            <span class="pick-sub">{{ held.has(c.symbol) ? '보유 중' : `${c.symbol} · ${EXCHANGE_LABEL[c.exchange] || c.market}` }}</span>
+            <span class="pick-sub">{{ held.has(c.symbol) ? '보유 중' : `${tickerText(c)} · ${EXCHANGE_LABEL[c.exchange] || c.market}` }}</span>
           </button>
         </li>
         <li v-if="searching" class="pick-empty">검색 중…</li>
@@ -267,7 +278,7 @@ const rateText = (r) => `${r > 0 ? '+' : ''}${Number(r).toFixed(2)}%`
             <span v-if="selected.market === 'US'" class="badge">USD</span>
           </div>
           <div class="pick-sub">
-            {{ selected.symbol }} · {{ EXCHANGE_LABEL[selected.exchange] || selected.market }} ·
+            {{ tickerText(selected) }} · {{ EXCHANGE_LABEL[selected.exchange] || selected.market }} ·
             <template v-if="quote.status === 'loading'">현재가 불러오는 중…</template>
             <template v-else-if="quote.status === 'ok'">
               현재가 <b class="quote-price">{{ unitPrice(quote.currency, quote.price) }}</b>
