@@ -18,6 +18,9 @@ export const ratePct = (profit, cost) => (Number(cost) ? (Number(profit) / Numbe
 export const unitPrice = (currency, v) =>
   currency === 'USD' ? `$${Number(v).toFixed(2)}` : `${fmt(v)}원`
 
+// 달러 금액: $4,380.5 처럼 소수점 2자리까지
+export const usdText = (v) => `$${Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 })}`
+
 // 환율: 1,335.2 처럼 소수점 2자리까지
 export const fxText = (r) => Number(r).toLocaleString('ko-KR', { maximumFractionDigits: 2 })
 

@@ -12,6 +12,7 @@
   --handle: #c5cbd2;
   --press: #f9fafb;
   --us-bar: #a5cbff;
+  --cash-bar: #c5cbd2;
   --shadow: 0 8px 24px rgba(0, 29, 58, 0.14);
 }
 @media (prefers-color-scheme: dark) {
@@ -26,6 +27,7 @@
     --handle: #4e5560;
     --press: #1e1e24;
     --us-bar: #2f5488;
+    --cash-bar: #4e5560;
     --shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
   }
 }
@@ -597,3 +599,18 @@ body.sheet-open { overflow: hidden; }
 .naver-mark { font-size: 20px; font-weight: 900; font-family: Arial, sans-serif; line-height: 1; }
 .user-name { font-size: 14px; color: var(--sub); white-space: nowrap; }
 .logout-btn { margin-left: 4px; }
+
+/* ===== 예수금 ===== */
+.alloc-bar .cash { background: var(--cash-bar); }
+.dot.cash { background: var(--cash-bar); }
+.alloc-legend { flex-wrap: wrap; align-items: center; }
+.cash-edit { margin-left: auto; padding: 0; font-size: 13px; color: var(--blue); font-weight: 600; }
+.pl-prefix { font-weight: 500; margin-right: 2px; opacity: 0.85; }
+.rows dd .dd-sub { color: var(--sub); font-weight: 500; font-size: 13px; margin-left: 4px; }
+@media (min-width: 1024px) {
+  .rows .row dd .dd-sub { display: block; margin: 2px 0 0; }
+}
+@media (min-width: 1024px) {
+  /* 세부 항목: 옆 칸이 두 줄(달러 예수금)이어도 금액은 위쪽에 맞춤 */
+  .rows .row { justify-content: flex-start; }
+}

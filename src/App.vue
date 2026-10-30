@@ -5,6 +5,7 @@ import PortfolioSummary from './components/PortfolioSummary.vue'
 import HoldingList from './components/HoldingList.vue'
 import AddHoldingSheet from './components/AddHoldingSheet.vue'
 import EditHoldingSheet from './components/EditHoldingSheet.vue'
+import CashSheet from './components/CashSheet.vue'
 import BaseSheet from './components/BaseSheet.vue'
 import LoginScreen from './components/LoginScreen.vue'
 import { useAuth } from './composables/useAuth'
@@ -13,7 +14,7 @@ import { fmt, qtyText, fxText, timeText } from './utils/format'
 
 const {
   summary, holdings, stocks, usdRate, fxUpdatedAt, refreshing, loading, error,
-  load, saveOrder, addHolding, updateHolding, removeHolding, refreshPrices,
+  load, saveOrder, addHolding, updateHolding, removeHolding, refreshPrices, saveCash,
 } = usePortfolio()
 
 // ===== 로그인 =====
@@ -120,6 +121,28 @@ async function onEdit(payload) {
   }
 }
 
+// ===== 예수금 =====
+const cashOpen = ref(false)
+const cashSaving = ref(false)
+const cashError = ref('')
+function openCash() {
+  cashError.value = ''
+  cashOpen.value = true
+}
+async function onCash(payload) {
+  cashSaving.value = true
+  cashError.value = ''
+  try {
+    await saveCash(payload)
+    cashOpen.value = false
+    toast('예수금을 저장했어요')
+  } catch (e) {
+    cashError.value = e.message
+  } finally {
+    cashSaving.value = false
+  }
+}
+
 // ===== 현재가 · 환율 갱신 =====
 const refreshError = ref('')
 async function refresh({ manual = false } = {}) {
@@ -189,7 +212,7 @@ watch(
 
     <!-- 정상 -->
     <template v-else>
-      <PortfolioSummary :summary="summary" />
+      <PortfolioSummary :summary="summary" @edit-cash="openCash" />
 
       <section class="card list-card" :class="{ editing }">
         <div class="list-head">
@@ -263,6 +286,18 @@ watch(
     :server-error="editError"
     @close="editTarget = null"
     @submit="onEdit"
+  />
+
+  <!-- 예수금 수정 -->
+  <CashSheet
+    :open="cashOpen"
+    :krw="Number(summary?.cash_krw || 0)"
+    :usd="Number(summary?.cash_usd || 0)"
+    :usd-rate="usdRate"
+    :saving="cashSaving"
+    :server-error="cashError"
+    @close="cashOpen = false"
+    @submit="onCash"
   />
 
   <!-- 삭제 확인 -->

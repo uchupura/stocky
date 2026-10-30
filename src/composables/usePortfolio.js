@@ -203,6 +203,28 @@ export function usePortfolio() {
     }
   }
 
+  /**
+   * 예수금 저장 (원화·달러 각각 한 줄, 없으면 추가 / 있으면 수정)
+   * @param {{ krw: number, usd: number }} p 원화는 원, 달러는 $ 단위
+   */
+  async function saveCash({ krw, usd }) {
+    const portfolio_id = summary.value.portfolio_id
+    const { error: e } = await supabase.from('cash_balances').upsert(
+      [
+        { portfolio_id, currency: 'KRW', amount: krw },
+        { portfolio_id, currency: 'USD', amount: usd },
+      ],
+      { onConflict: 'portfolio_id,currency' },
+    )
+    if (e) {
+      if (e.code === '42P01' || /cash_balances/.test(e.message || '')) {
+        throw new Error('예수금 기능을 쓰려면 008_cash_balances.sql 을 먼저 실행해 주세요.')
+      }
+      throw new Error(friendlyError(e, '예수금을 저장하지 못했어요.'))
+    }
+    await load({ silent: true })
+  }
+
   /** 보유 종목 삭제 (종목 정보 stocks 는 남겨둠) */
   async function removeHolding(holdingId) {
     const { error: e, count } = await supabase
@@ -220,6 +242,6 @@ export function usePortfolio() {
 
   return {
     summary, holdings, stocks, usdRate, fxUpdatedAt, refreshing, loading, error,
-    load, saveOrder, addHolding, updateHolding, removeHolding, refreshPrices,
+    load, saveOrder, addHolding, updateHolding, removeHolding, refreshPrices, saveCash,
   }
 }
