@@ -3,7 +3,7 @@ import { fetchChart } from '../lib/api'
 
 /**
  * 하루 주가 그래프 불러오기
- *   - 한 번에 2종목씩 (국내는 그래프 하나에 KIS 를 여러 번 부르므로 호출 한도 보호)
+ *   - 한 번에 4종목씩 (국내는 그래프 하나에 KIS 를 약 4번 부르므로 동시 4종목이면 초당 한도 안)
  *   - 이미 받은 종목은 다시 부르지 않음 (force 로 새로고침)
  *   charts[`${market}:${symbol}`] = { status: 'loading'|'ok'|'error', points, prevClose }
  */
@@ -32,7 +32,7 @@ export function useCharts() {
         }
       }
     }
-    await Promise.all([worker(), worker()])
+    await Promise.all([worker(), worker(), worker(), worker()])
   }
 
   return { charts, chartKey: key, loadCharts }

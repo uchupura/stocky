@@ -232,10 +232,17 @@ watch(
         <div class="list-head">
           <div class="list-title">
             <h2>보유 주식<span>{{ holdings.length }}</span></h2>
-            <select v-model="view" class="view-select" aria-label="보기 선택">
-              <option value="value">평가</option>
-              <option value="quote">시세</option>
-            </select>
+            <div class="view-toggle" role="radiogroup" aria-label="보기 선택">
+              <button
+                v-for="o in [{ v: 'value', t: '평가' }, { v: 'quote', t: '시세' }]"
+                :key="o.v"
+                type="button"
+                role="radio"
+                :aria-checked="view === o.v"
+                :class="{ on: view === o.v }"
+                @click="view = o.v"
+              >{{ o.t }}</button>
+            </div>
           </div>
           <div class="list-actions">
             <span v-if="!editing && holdings.length" class="hint">≡ 를 끌어서 순서 변경</span>
