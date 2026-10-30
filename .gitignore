@@ -1,0 +1,35 @@
+# ===== 민감 정보 (절대 커밋 금지) =====
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+credentials*
+secrets*
+*.secret
+
+# ===== 백업 / 임시 파일 =====
+*.bak
+*.tmp
+*.swp
+*~
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== 에디터 / IDE =====
+.vscode/
+.idea/
+
+# ===== 의존성 / 빌드 결과물 =====
+node_modules/
+dist/
+build/
+
+# ===== 로그 =====
+*.log
