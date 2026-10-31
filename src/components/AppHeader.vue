@@ -1,8 +1,9 @@
 <script setup>
 defineProps({
   userName: { type: String, default: '' }, // 로그인했을 때만 값이 있음
+  activeTab: { type: String, default: 'invest' }, // 'invest' 내 투자 / 'deposits' 입출금
 })
-const emit = defineEmits(['logout'])
+const emit = defineEmits(['logout', 'navigate'])
 </script>
 
 <template>
@@ -10,9 +11,8 @@ const emit = defineEmits(['logout'])
     <div class="topbar-inner">
       <div class="brand">Stocky<span>.</span></div>
       <nav v-if="userName" class="nav d-only" aria-label="주 메뉴">
-        <a href="#">홈</a>
-        <a href="#" class="active">내 투자</a>
-        <a href="#">발견</a>
+        <button type="button" :class="{ active: activeTab === 'invest' }" :aria-current="activeTab === 'invest' ? 'page' : undefined" @click="emit('navigate', 'invest')">내 투자</button>
+        <button type="button" :class="{ active: activeTab === 'deposits' }" :aria-current="activeTab === 'deposits' ? 'page' : undefined" @click="emit('navigate', 'deposits')">입출금</button>
       </nav>
       <div class="header-actions">
         <label v-if="userName" class="search d-only">

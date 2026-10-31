@@ -6,6 +6,7 @@ import HoldingList from './components/HoldingList.vue'
 import AddHoldingSheet from './components/AddHoldingSheet.vue'
 import EditHoldingSheet from './components/EditHoldingSheet.vue'
 import CashSheet from './components/CashSheet.vue'
+import DepositsTab from './components/DepositsTab.vue'
 import BaseSheet from './components/BaseSheet.vue'
 import LoginScreen from './components/LoginScreen.vue'
 import { useAuth } from './composables/useAuth'
@@ -17,6 +18,18 @@ const {
   summary, holdings, stocks, usdRate, fxUpdatedAt, refreshing, loading, error,
   load, saveOrder, addHolding, updateHolding, removeHolding, refreshPrices, saveCash,
 } = usePortfolio()
+
+// ===== 탭: 내 투자 / 입출금 (주소 #deposits 로 새로고침해도 유지) =====
+const tabFromHash = () => (location.hash === '#deposits' ? 'deposits' : 'invest')
+const tab = ref(tabFromHash())
+function setTab(t) {
+  tab.value = t
+  history.replaceState(null, '', location.pathname + location.search + (t === 'deposits' ? '#deposits' : ''))
+  window.scrollTo({ top: 0 })
+}
+window.addEventListener('hashchange', () => {
+  if (!location.hash.includes('access_token')) tab.value = tabFromHash()
+})
 
 // ===== 보기 전환: 평가 / 시세 (고른 값은 브라우저에 기억) =====
 const VIEW_KEY = 'stocky-view'
@@ -194,7 +207,7 @@ watch(
 </script>
 
 <template>
-  <AppHeader :user-name="session ? displayName : ''" @logout="onLogout" />
+  <AppHeader :user-name="session ? displayName : ''" :active-tab="tab" @logout="onLogout" @navigate="setTab" />
 
   <!-- 로그인 상태 확인 중: 아무것도 그리지 않음 -->
   <template v-if="!ready" />
@@ -203,7 +216,26 @@ watch(
   <LoginScreen v-else-if="!session" :login-url="loginUrl" :error-code="loginError" />
 
   <main v-else class="app">
-    <h1 class="page-title d-only">내 투자</h1>
+    <!-- 탭 (모바일 — 데스크톱은 상단 메뉴) -->
+    <div class="page-tabs m-only" role="tablist" aria-label="화면 선택">
+      <button type="button" role="tab" :aria-selected="tab === 'invest'" :class="{ on: tab === 'invest' }" @click="setTab('invest')">내 투자</button>
+      <button type="button" role="tab" :aria-selected="tab === 'deposits'" :class="{ on: tab === 'deposits' }" @click="setTab('deposits')">입출금</button>
+    </div>
+    <h1 class="page-title d-only">{{ tab === 'deposits' ? '입출금' : '내 투자' }}</h1>
+
+    <!-- ===== 입출금 탭 ===== -->
+    <template v-if="tab === 'deposits'">
+      <section v-if="loading" class="card" aria-busy="true"><span class="skeleton" style="width: 40%; height: 30px" /></section>
+      <section v-else-if="error" class="card state" role="alert">
+        <strong>포트폴리오를 불러오지 못했어요</strong>
+        {{ error }}
+        <div><button class="retry" @click="load()">다시 시도</button></div>
+      </section>
+      <DepositsTab v-else :portfolio-id="summary?.portfolio_id ?? null" @toast="toast" />
+    </template>
+
+    <!-- ===== 내 투자 탭 ===== -->
+    <template v-else>
 
     <!-- 불러오는 중 -->
     <template v-if="loading">
@@ -300,6 +332,7 @@ watch(
         </span>
         <button :disabled="refreshing" @click="reloadAll">새로고침</button>
       </div>
+    </template>
     </template>
   </main>
 

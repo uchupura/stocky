@@ -689,3 +689,73 @@ body.sheet-open { overflow: hidden; }
 @media (max-width: 360px) {
   .view-toggle button { padding: 0 9px; font-size: 13px; }
 }
+
+/* ===== 탭 (내 투자 / 입출금) ===== */
+.nav button { font: inherit; color: inherit; padding: 0; }
+.nav button:hover, .nav button.active { color: var(--text); }
+.page-tabs { display: flex; gap: 20px; padding: 4px 8px 6px; }
+.page-tabs button {
+  position: relative;
+  padding: 8px 0;
+  font-size: 18px; font-weight: 700;
+  color: var(--sub);
+}
+.page-tabs button.on { color: var(--text); }
+.page-tabs button.on::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0;
+  height: 2px; border-radius: 1px; background: var(--text);
+}
+@media (min-width: 1024px) { .page-tabs { display: none !important; } }
+
+/* ===== 입출금 ===== */
+.label-sub { font-size: 12px; margin-left: 4px; padding: 2px 6px; border-radius: 6px; background: var(--bg); }
+.deposit-summary .total-pl { font-size: 14px; font-weight: 500; color: var(--sub); }
+.filter-chips { display: flex; gap: 6px; overflow-x: auto; padding: 0 12px 10px; scrollbar-width: none; }
+.filter-chips::-webkit-scrollbar { display: none; }
+.filter-chips button {
+  flex: 0 0 auto; height: 32px; padding: 0 12px; border-radius: 16px;
+  background: var(--bg); color: var(--sub); font-size: 14px; font-weight: 600; white-space: nowrap;
+}
+.filter-chips button.on { background: var(--text); color: var(--card); }
+.month-group + .month-group { margin-top: 8px; }
+.month-head {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 10px 12px 6px; font-size: 14px; font-weight: 700;
+}
+.month-sum { font-size: 12px; font-weight: 500; color: var(--sub); }
+.dep-list { list-style: none; }
+.dep-row {
+  width: 100%; display: flex; align-items: center; gap: 12px;
+  padding: 12px; border-radius: 14px; text-align: left;
+}
+.dep-row:hover { background: var(--press); }
+.dep-row:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.dep-date { flex: 0 0 44px; display: flex; flex-direction: column; font-size: 15px; font-weight: 600; line-height: 1.2; }
+.dep-date small { font-size: 12px; color: var(--sub); font-weight: 500; }
+.dep-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dep-account { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dep-memo { font-size: 13px; color: var(--sub); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dep-amount { flex: 0 0 auto; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.dep-amount b { font-size: 16px; font-weight: 700; white-space: nowrap; }
+.dep-kind { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 5px; background: var(--bg); color: var(--sub); }
+.dep-kind.deposit { background: var(--badge-bg); color: var(--badge-text); }
+.field-select {
+  flex: 1; min-width: 0; height: 100%;
+  border: 0; outline: 0; background: none; appearance: none; -webkit-appearance: none;
+  font: inherit; font-size: 17px; font-weight: 600; color: var(--text); cursor: pointer;
+}
+.new-account { display: flex; gap: 8px; align-items: center; }
+.new-account .field-input { flex: 1; height: 44px; }
+.new-account .chip-btn { height: 44px; }
+.account-list { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.account-row { display: flex; align-items: center; gap: 8px; }
+.account-row .field-input { flex: 1; height: 44px; }
+.account-sum { font-size: 13px; color: var(--sub); white-space: nowrap; }
+.chip-btn.danger { background: var(--up); color: #fff; }
+input[type='date'] { color-scheme: light dark; }
+/* 계좌 선택 칸: 오른쪽 펼침 표시 */
+.field-select {
+  padding-right: 24px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238b95a1' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 0 center;
+}
+.field-select option { color: initial; }
