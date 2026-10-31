@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 // Postgres 에러 → 화면 메시지
 function friendly(e, fallback) {
   if (e?.code === '23505') return '같은 이름의 계좌가 이미 있어요.'
-  if (e?.code === '23503') return '입출금 내역이 있는 계좌는 삭제할 수 없어요. 내역을 먼저 지워 주세요.'
+  if (e?.code === '23503') return '입출금·배당 내역이 있는 계좌는 삭제할 수 없어요. 내역을 먼저 지워 주세요.'
   if (e?.code === '23514') return '입력값을 다시 확인해 주세요.'
   if (e?.code === '42P01' || /deposits|accounts/.test(e?.message || '')) {
     return '입출금 기능을 쓰려면 010_deposits.sql 을 먼저 실행해 주세요.'

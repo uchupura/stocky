@@ -759,3 +759,8 @@ input[type='date'] { color-scheme: light dark; }
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238b95a1' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 0 center;
 }
 .field-select option { color: initial; }
+
+/* ===== 배당 ===== */
+.dep-account .badge { margin-left: 4px; vertical-align: 2px; }
+.dep-krw { font-size: 12px; color: var(--sub); white-space: nowrap; }
+.picked .link-btn { margin-left: auto; padding: 0 4px; color: var(--blue); font-weight: 600; }

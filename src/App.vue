@@ -7,6 +7,7 @@ import AddHoldingSheet from './components/AddHoldingSheet.vue'
 import EditHoldingSheet from './components/EditHoldingSheet.vue'
 import CashSheet from './components/CashSheet.vue'
 import DepositsTab from './components/DepositsTab.vue'
+import DividendsTab from './components/DividendsTab.vue'
 import BaseSheet from './components/BaseSheet.vue'
 import LoginScreen from './components/LoginScreen.vue'
 import { useAuth } from './composables/useAuth'
@@ -19,12 +20,13 @@ const {
   load, saveOrder, addHolding, updateHolding, removeHolding, refreshPrices, saveCash,
 } = usePortfolio()
 
-// ===== 탭: 내 투자 / 입출금 (주소 #deposits 로 새로고침해도 유지) =====
-const tabFromHash = () => (location.hash === '#deposits' ? 'deposits' : 'invest')
+// ===== 탭: 내 투자 / 입출금 / 배당 (주소 #deposits · #dividends 로 새로고침해도 유지) =====
+const TAB_HASH = { deposits: '#deposits', dividends: '#dividends' }
+const tabFromHash = () => Object.keys(TAB_HASH).find((t) => TAB_HASH[t] === location.hash) || 'invest'
 const tab = ref(tabFromHash())
 function setTab(t) {
   tab.value = t
-  history.replaceState(null, '', location.pathname + location.search + (t === 'deposits' ? '#deposits' : ''))
+  history.replaceState(null, '', location.pathname + location.search + (TAB_HASH[t] || ''))
   window.scrollTo({ top: 0 })
 }
 window.addEventListener('hashchange', () => {
@@ -220,18 +222,20 @@ watch(
     <div class="page-tabs m-only" role="tablist" aria-label="화면 선택">
       <button type="button" role="tab" :aria-selected="tab === 'invest'" :class="{ on: tab === 'invest' }" @click="setTab('invest')">내 투자</button>
       <button type="button" role="tab" :aria-selected="tab === 'deposits'" :class="{ on: tab === 'deposits' }" @click="setTab('deposits')">입출금</button>
+      <button type="button" role="tab" :aria-selected="tab === 'dividends'" :class="{ on: tab === 'dividends' }" @click="setTab('dividends')">배당</button>
     </div>
-    <h1 class="page-title d-only">{{ tab === 'deposits' ? '입출금' : '내 투자' }}</h1>
+    <h1 class="page-title d-only">{{ { deposits: '입출금', dividends: '배당' }[tab] || '내 투자' }}</h1>
 
-    <!-- ===== 입출금 탭 ===== -->
-    <template v-if="tab === 'deposits'">
+    <!-- ===== 입출금 · 배당 탭 ===== -->
+    <template v-if="tab === 'deposits' || tab === 'dividends'">
       <section v-if="loading" class="card" aria-busy="true"><span class="skeleton" style="width: 40%; height: 30px" /></section>
       <section v-else-if="error" class="card state" role="alert">
         <strong>포트폴리오를 불러오지 못했어요</strong>
         {{ error }}
         <div><button class="retry" @click="load()">다시 시도</button></div>
       </section>
-      <DepositsTab v-else :portfolio-id="summary?.portfolio_id ?? null" @toast="toast" />
+      <DepositsTab v-else-if="tab === 'deposits'" :portfolio-id="summary?.portfolio_id ?? null" @toast="toast" />
+      <DividendsTab v-else :portfolio-id="summary?.portfolio_id ?? null" :holdings="holdings" @toast="toast" />
     </template>
 
     <!-- ===== 내 투자 탭 ===== -->

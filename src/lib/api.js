@@ -28,6 +28,15 @@ export function fetchChart(symbol, market) {
 }
 
 /**
+ * 그날 원/달러 환율 (주말·휴일은 직전 영업일)
+ * @param {string} date YYYY-MM-DD
+ * @returns {Promise<{ requested: string, date: string, rate: number, cached: boolean }>}
+ */
+export function fetchFx(date) {
+  return call(`/api/fx?${new URLSearchParams({ date })}`, {}, '환율을 가져오지 못했어요.')
+}
+
+/**
  * 보유 종목 현재가 + 원/달러 환율 일괄 갱신 (서버가 1분에 한 번만 실제 조회)
  * @returns {Promise<{ skipped: boolean, updated?: number, failed?: Array<{symbol, error}>, fxRate: number, updatedAt: string }>}
  */
