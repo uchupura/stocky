@@ -8,6 +8,7 @@ import EditHoldingSheet from './components/EditHoldingSheet.vue'
 import CashSheet from './components/CashSheet.vue'
 import DepositsTab from './components/DepositsTab.vue'
 import DividendsTab from './components/DividendsTab.vue'
+import HomeTab from './components/HomeTab.vue'
 import BaseSheet from './components/BaseSheet.vue'
 import LoginScreen from './components/LoginScreen.vue'
 import { useAuth } from './composables/useAuth'
@@ -20,9 +21,10 @@ const {
   load, saveOrder, addHolding, updateHolding, removeHolding, refreshPrices, saveCash,
 } = usePortfolio()
 
-// ===== 탭: 내 투자 / 입출금 / 배당 (주소 #deposits · #dividends 로 새로고침해도 유지) =====
-const TAB_HASH = { deposits: '#deposits', dividends: '#dividends' }
-const tabFromHash = () => Object.keys(TAB_HASH).find((t) => TAB_HASH[t] === location.hash) || 'invest'
+// ===== 탭: 홈(기본) / 내 투자 / 입출금 / 배당 — 주소 # 로 새로고침해도 유지 =====
+const TAB_HASH = { invest: '#invest', deposits: '#deposits', dividends: '#dividends' }
+const TAB_TITLE = { home: '홈', invest: '내 투자', deposits: '입출금', dividends: '배당' }
+const tabFromHash = () => Object.keys(TAB_HASH).find((t) => TAB_HASH[t] === location.hash) || 'home'
 const tab = ref(tabFromHash())
 function setTab(t) {
   tab.value = t
@@ -220,14 +222,32 @@ watch(
   <main v-else class="app">
     <!-- 탭 (모바일 — 데스크톱은 상단 메뉴) -->
     <div class="page-tabs m-only" role="tablist" aria-label="화면 선택">
-      <button type="button" role="tab" :aria-selected="tab === 'invest'" :class="{ on: tab === 'invest' }" @click="setTab('invest')">내 투자</button>
-      <button type="button" role="tab" :aria-selected="tab === 'deposits'" :class="{ on: tab === 'deposits' }" @click="setTab('deposits')">입출금</button>
-      <button type="button" role="tab" :aria-selected="tab === 'dividends'" :class="{ on: tab === 'dividends' }" @click="setTab('dividends')">배당</button>
+      <button
+        v-for="t in ['home', 'invest', 'deposits', 'dividends']"
+        :key="t"
+        type="button"
+        role="tab"
+        :aria-selected="tab === t"
+        :class="{ on: tab === t }"
+        @click="setTab(t)"
+      >{{ TAB_TITLE[t] }}</button>
     </div>
-    <h1 class="page-title d-only">{{ { deposits: '입출금', dividends: '배당' }[tab] || '내 투자' }}</h1>
+    <h1 class="page-title d-only">{{ TAB_TITLE[tab] }}</h1>
+
+    <!-- ===== 홈 탭 ===== -->
+    <template v-if="tab === 'home'">
+      <section v-if="loading" class="card" aria-busy="true"><span class="skeleton" style="width: 30%; height: 16px" /><span class="skeleton" style="width: 55%; height: 34px" /></section>
+      <section v-else-if="error" class="card state" role="alert">
+        <strong>포트폴리오를 불러오지 못했어요</strong>
+        {{ error }}
+        <div><button class="retry" @click="load()">다시 시도</button></div>
+      </section>
+      <HomeTab v-else :summary="summary" @navigate="setTab" />
+    </template>
+
 
     <!-- ===== 입출금 · 배당 탭 ===== -->
-    <template v-if="tab === 'deposits' || tab === 'dividends'">
+    <template v-else-if="tab === 'deposits' || tab === 'dividends'">
       <section v-if="loading" class="card" aria-busy="true"><span class="skeleton" style="width: 40%; height: 30px" /></section>
       <section v-else-if="error" class="card state" role="alert">
         <strong>포트폴리오를 불러오지 못했어요</strong>

@@ -1,4 +1,6 @@
 :root {
+  /* 브라우저가 그리는 요소(펼친 선택 목록·날짜 선택·스크롤바)도 기기 테마에 맞게 */
+  color-scheme: light dark;
   --bg: #f2f4f6;
   --card: #ffffff;
   --text: #191f28;
@@ -764,3 +766,60 @@ input[type='date'] { color-scheme: light dark; }
 .dep-account .badge { margin-left: 4px; vertical-align: 2px; }
 .dep-krw { font-size: 12px; color: var(--sub); white-space: nowrap; }
 .picked .link-btn { margin-left: auto; padding: 0 4px; color: var(--blue); font-weight: 600; }
+
+/* ===== 홈 ===== */
+.home-summary .total { font-size: 34px; }
+.home-go { display: inline-block; margin-top: 14px; }
+@media (min-width: 1024px) { .home-summary .total { font-size: 40px; } }
+@media (max-width: 360px) { .page-tabs { gap: 14px; } .page-tabs button { font-size: 16px; } }
+
+/* ===== 배당 그래프 ===== */
+:root { --viz-kr: #3182f6; --viz-us: #eb6834; }            /* 팔레트 검사 통과 (라이트, 흰 카드) */
+@media (prefers-color-scheme: dark) { :root { --viz-us: #d95926; } } /* 다크 카드 #17171c 기준 통과 */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.div-chart-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.div-chart-head h2 { font-size: 20px; font-weight: 700; }
+.chart-filters { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.chart-select select {
+  height: 34px; padding: 0 30px 0 12px; border: 0; border-radius: 10px;
+  background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b95a1' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 10px center;
+  color: var(--text); font: inherit; font-size: 14px; font-weight: 600;
+  appearance: none; -webkit-appearance: none; cursor: pointer; max-width: 46vw;
+}
+.chart-select select:focus-visible { outline: 2px solid var(--blue); }
+.chart-headline { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 16px; gap: 8px; }
+.chart-title { font-size: 14px; color: var(--sub); }
+.chart-total { font-size: 24px; font-weight: 700; margin-top: 2px; }
+.year-nav { display: flex; align-items: center; gap: 4px; font-size: 15px; font-weight: 700; }
+.year-nav button { width: 32px; height: 32px; border-radius: 10px; background: var(--bg); font-size: 18px; color: var(--text); }
+.year-nav button:disabled { opacity: 0.35; cursor: default; }
+.chart-legend { display: flex; gap: 12px; font-size: 13px; color: var(--sub); }
+.chart-legend-row { margin-top: 8px; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.sw.kr { background: var(--viz-kr); }
+.sw.us { background: var(--viz-us); }
+.chart-box { position: relative; margin-top: 10px; outline: none; border-radius: 12px; }
+.chart-box:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; }
+.chart-svg { display: block; overflow: visible; }
+.grid line { stroke: var(--line); stroke-width: 1; }
+.grid line.base { stroke: var(--sub); opacity: 0.5; }
+.grid text, .x-label { fill: var(--sub); font-size: 11px; font-family: inherit; }
+.bar-kr { fill: var(--viz-kr); }
+.bar-us { fill: var(--viz-us); }
+.dim { opacity: 0.45; transition: opacity 0.15s; }
+.hit { fill: transparent; cursor: pointer; }
+.cum-line { fill: none; stroke: var(--viz-kr); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.cum-area { fill: var(--viz-kr); opacity: 0.12; }
+.cum-dot { fill: var(--viz-kr); stroke: var(--card); stroke-width: 2; }
+.crosshair { stroke: var(--sub); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.7; }
+.chart-tip {
+  position: absolute; top: 0; transform: translateX(-50%);
+  min-width: 132px; padding: 8px 10px; border-radius: 10px;
+  background: var(--card); box-shadow: var(--shadow); border: 1px solid var(--line);
+  font-size: 12px; color: var(--sub); pointer-events: none; display: flex; flex-direction: column; gap: 2px; z-index: 2;
+}
+.chart-tip b { color: var(--text); font-size: 13px; }
+.tip-line em { font-style: normal; color: var(--text); font-weight: 600; margin-left: 4px; }
+
+/* 펼친 선택 목록의 항목 글자는 브라우저 기본 색 (앱 글자 색을 물려받아 배경과 같아지는 문제 방지) */
+select option { color: initial; }
