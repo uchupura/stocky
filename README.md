@@ -26,6 +26,9 @@ stocky/
 │   │   ├── AppHeader.vue         # 상단 바 (로고, 메뉴, 검색, 이름·로그아웃)
 │   │   ├── HomeTab.vue           # 홈 탭 (총 자산 · 누적 원금 · 원금 대비 수익률 · 배당 그래프)
 │   │   ├── DividendChart.vue     # 배당 그래프 (월별·연도별·누적, 계좌·종목 필터, SVG)
+│   │   ├── ReturnsTab.vue        # 수익률 탭 (누적 수익률 · 월별 표 8칸 · 월말 총 자산 입력)
+│   │   ├── ReturnsChart.vue      # 수익률 그래프 (월별 ± 막대 · 누적 선, SVG)
+│   │   ├── SnapshotSheet.vue     # 월말 총 자산 입력·수정 창 (지금 총 자산으로 기록 버튼)
 │   │   ├── LoginScreen.vue       # 로그인 화면 (네이버 로그인 버튼)
 │   │   ├── PortfolioSummary.vue  # 총 자산·주식 수익률·원금·국내/해외·예수금·비중
 │   │   ├── HoldingList.vue       # 보유 주식 목록 + 드래그 앤 드롭
@@ -45,15 +48,18 @@ stocky/
 │   │   ├── useCharts.js          # 하루 그래프 불러오기 (4종목씩)
 │   │   ├── useDeposits.js        # 입출금 · 계좌 조회·저장, 누적 원금 계산
 │   │   ├── useDividends.js       # 배당 조회·저장, 누적·연도별 합계
+│   │   ├── useSnapshots.js       # 총 자산 기록 조회·저장·삭제 (012)
 │   │   └── usePortfolio.js       # Supabase 조회 · 추가 · 삭제 · 순서 저장
 │   ├── lib/
 │   │   ├── supabase.js           # Supabase 클라이언트 (.env 값 사용)
 │   │   └── api.js                # 우리 서버(/api) 호출 — 현재가 조회
 │   └── utils/
-│       └── format.js             # 금액·수익률 표시 형식
+│       ├── format.js             # 금액·수익률 표시 형식
+│       └── returns.js            # 월 수익률(Modified Dietz) · 누적 입금액 대비 수익률 계산
 ├── api/
 │   ├── auth/naver/login.js       # GET  /api/auth/naver/login    — 네이버 로그인 시작
 │   ├── auth/naver/callback.js    # GET  /api/auth/naver/callback — 네이버 로그인 완료 → 세션 발급
+│   ├── cron/snapshot.js          # GET  /api/cron/snapshot — Vercel Cron 전용, 월말 총 자산 기록 (CRON_SECRET 검사)
 │   ├── chart.js                  # GET  /api/chart   — 가장 최근 거래일 하루 주가 그래프
 │   ├── fx.js                     # GET  /api/fx      — 날짜별 원/달러 환율 (주말·휴일은 직전 영업일)
 │   ├── quote.js                  # GET  /api/quote   — 종목 현재가 (+ 해외는 환율)
@@ -63,7 +69,8 @@ stocky/
 │   ├── chart.js                  # 하루 그래프 10분 간격 (국내 일별분봉 120개씩 ~4회→10분, 해외 10분봉 1회 · 캐시 5분/장 마감 60분)
 │   ├── fx.js                     # 날짜별 원/달러 환율 (KIS FX@KRW 종가, fx_daily 저장)
 │   ├── kis.js                    # KIS 토큰·시세 조회 (서버 전용, 조회 API 만 사용)
-│   └── refresh.js                # 현재가·환율 갱신 → stocks·exchange_rates 저장 (1분 제한)
+│   ├── refresh.js                # 현재가·환율 갱신 → stocks·exchange_rates 저장 (1분 제한)
+│   └── snapshot.js               # 월말 총 자산 기록 → asset_snapshots (말일일 때만, 직접 입력은 보존)
 ├── scripts/
 │   └── sync-stock-master.mjs     # 전체 상장 종목 목록 → stock_master 동기화
 ├── supabase/
@@ -72,7 +79,7 @@ stocky/
 │   └── migrations/               # 기존 DB 에 추가로 적용할 변경 SQL
 ├── .env.example                  # 환경변수 목록 (값 없음)
 ├── vite.config.js                # 로컬 개발 시 /api 를 api/ 함수로 연결
-├── vercel.json                   # Vercel 배포 설정 (빌드, 보안 헤더)
+├── vercel.json                   # Vercel 배포 설정 (빌드, 보안 헤더, 월말 cron)
 └── package.json
 ```
 
@@ -96,9 +103,10 @@ Supabase 대시보드 → **SQL Editor** 에서 순서대로 실행합니다.
 | `008_cash_balances.sql` | 원화·달러 예수금 `cash_balances`(본인만), 요약에 예수금·총 자산 |
 | `009_quote_view.sql` | 시세 보기 — `stocks.prev_close`(전일 종가), 하루 그래프 캐시 `intraday_cache`(서버 전용) |
 | `010_deposits.sql` | 입출금 — 계좌 `accounts`, 입출금 내역 `deposits` (본인만, 내역 있는 계좌 삭제 불가) |
+| `012_asset_snapshots.sql` | 수익률 — 날짜별 총 자산 기록 `asset_snapshots` (auto = 월말 자동 기록, manual = 직접 입력) |
 | `011_dividends.sql` | 배당 — `dividends`(받은 통화 금액·지급일 환율·원화 환산 자동), 날짜별 환율 `fx_daily`, 집계 뷰 `dividend_monthly`·`dividend_yearly` |
 
-> 처음부터 새로 만드는 경우: `schema.sql` → `seed.sql` → `003` → `004` → `005` → `006` → `007` → `008` → `009` → `010` → `011` 순서 (`002` 는 건너뜀)
+> 처음부터 새로 만드는 경우: `schema.sql` → `seed.sql` → `003` → `004` → `005` → `006` → `007` → `008` → `009` → `010` → `011` → `012` 순서 (`002` 는 건너뜀)
 
 ### 종목 목록 채우기 (최초 1회 + 가끔)
 
@@ -144,6 +152,7 @@ npm run dev
 | `NAVER_CLIENT_ID` | 서버 전용 | 네이버 개발자센터 애플리케이션 Client ID |
 | `NAVER_CLIENT_SECRET` | 서버 전용 | 네이버 개발자센터 애플리케이션 Client Secret |
 | `ALLOWED_EMAILS` | 서버 전용 | 로그인 허용할 네이버 **연락처 이메일** (쉼표로 여러 개) |
+| `CRON_SECRET` | 서버 전용 | Vercel Cron 호출 확인용 비밀값 (16자 이상 무작위 문자열). 없으면 월말 자동 기록이 항상 거부됨 |
 
 - `.env` 는 `.gitignore` 에 등록되어 있어 Git 에 올라가지 않습니다.
 - `VITE_` 로 시작하는 값만 브라우저로 전달됩니다. 서버 전용 키는 `api/`·`server/`·`scripts/` 에서만 읽습니다.
@@ -157,8 +166,10 @@ npm run dev
 | 포트폴리오 요약 | **총 자산**(주식 + 원화 예수금 + 달러 예수금×현재 환율), 주식 수익금/수익률, 투자 원금, 국내·해외 평가금액, 예수금, 비중 |
 | 예수금 | 요약 카드의 `예수금 수정` → 원화(원)·달러($) 금액 입력. 달러는 현재 환율로 원화 환산 (환율 손익은 계산 안 함) |
 | 보유 종목 목록 | 종목명, 보유 수량, 평가금액, 수익금/수익률 (데스크톱은 평균 단가·현재가 추가) |
-| 탭 | **홈 / 내 투자 / 입출금 / 배당** (모바일 상단 탭, 데스크톱 상단 메뉴). 홈이 첫 화면, 주소 `#invest` · `#deposits` · `#dividends` |
+| 탭 | **홈 / 내 투자 / 수익률 / 입출금 / 배당** (모바일 상단 탭, 데스크톱 상단 메뉴). 홈이 첫 화면, 주소 `#invest` · `#returns` · `#deposits` · `#dividends` |
 | 홈 | 맨 위 **총 자산**(주식 + 예수금), **누적 원금**(입금 − 출금), **누적 원금 대비 수익금·수익률**. 배당은 예수금으로 들어가므로 따로 더하지 않음 |
+| 수익률 | 맨 위 **누적 수익률**(누적 수익 ÷ 누적 입금액)·계좌 총액·누적 입금액·누적 수익. 월별 표: 계좌 총액 / 월 입금액 / 월 수익 / 월 수익률 / 누적 입금액 / 누적 수익 / 누적 수익률 (모바일은 카드). 그래프: 월별 수익률 막대(+빨강 / −파랑)·누적 수익률 선 |
+| 월말 총 자산 기록 | 매달 말일 총 자산을 **자동 저장**(Vercel Cron: 28~31일 22:00 UTC 실행 → 전날이 말일일 때만, 시세 갱신 후 저장). 지난 달들은 `+ 월말 자산 입력`으로 직접 입력, `지금 총 자산으로 기록`으로 오늘 값 저장. 이번 달은 지금 총 자산으로 "진행 중" 계산. 월 수익률은 월중 입출금을 날짜 비율로 반영(Modified Dietz) |
 | 배당 그래프 | 홈 아래 — **월별**(연도 선택)·**연도별**(국내·해외 쌓은 막대)·**누적**(선). 계좌·종목 필터 동시 적용, 마우스/터치/키보드로 금액 표시, 화면 읽기용 표 |
 | 배당 | 맨 위 **누적 배당**(세후·원화 환산)·올해·연도별. 종목(보유 종목 + 전체 검색)·금액(국내 원 / 미국 $)·지급일·계좌·메모. 미국 주식은 **지급일 원/달러 환율** 자동 적용(수정 가능), 원화 환산액은 지급일 가치로 고정. 홈 탭 그래프용 월별·연도별 집계 뷰 |
 | 입출금 | 맨 위 **누적 원금**(총 입금 − 총 출금, 원화)과 계좌별 원금. 입금/출금 · 금액 · 계좌(직접 추가) · 일자 · 메모 입력, 계좌 필터, 월별 내역, 눌러서 수정·삭제, 계좌 관리 |
@@ -187,8 +198,9 @@ npm run dev
 ## 배포 (Vercel)
 
 1. [vercel.com](https://vercel.com) → **Add New… → Project** → `uchupura/stocky` Import
-2. **Environment Variables** 에 위 "환경변수" 표의 9개 모두 등록 (서버 전용 키는 **Sensitive** 권장)
+2. **Environment Variables** 에 위 "환경변수" 표의 10개 모두 등록 (서버 전용 키는 **Sensitive** 권장)
 3. **Deploy** (Framework·빌드 설정은 `vercel.json` 에 지정되어 있어 기본값 그대로)
 
 이후 `main` 브랜치에 push 할 때마다 자동으로 다시 배포됩니다.
+월말 자동 기록(cron)은 **배포된 사이트에서만** 실행되며, Vercel 대시보드 → **Settings → Cron Jobs** 에서 실행 기록을 볼 수 있습니다.
 환경변수를 바꾼 경우에는 Vercel 에서 **Redeploy** 해야 반영됩니다.

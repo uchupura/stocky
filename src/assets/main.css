@@ -823,3 +823,38 @@ input[type='date'] { color-scheme: light dark; }
 
 /* 펼친 선택 목록의 항목 글자는 브라우저 기본 색 (앱 글자 색을 물려받아 배경과 같아지는 문제 방지) */
 select option { color: initial; }
+
+/* ===== 수익률 그래프 (오르면 빨강 / 내리면 파랑 — 라이트·다크 팔레트 검사 통과) ===== */
+.sw.up { background: var(--up); }
+.sw.down { background: var(--down); }
+.bar-up { fill: var(--up); }
+.bar-down { fill: var(--down); }
+.bar-flat { fill: var(--sub); }
+.bar-up.live, .bar-down.live { opacity: 0.55; }          /* 이번 달 진행 중 */
+.ret-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.ret-line.up { stroke: var(--up); }
+.ret-line.down { stroke: var(--down); }
+.ret-area-up { fill: var(--up); opacity: 0.1; }
+.ret-area-down { fill: var(--down); opacity: 0.1; }
+.ret-dot { stroke: var(--card); stroke-width: 2; fill: var(--sub); }
+.ret-dot.up { fill: var(--up); }
+.ret-dot.down { fill: var(--down); }
+/* 수익률 탭 */
+.sheet-note { font-size: 13px; color: var(--sub); background: var(--bg); border-radius: 10px; padding: 10px 12px; line-height: 1.5; }
+.ret-tip { margin-top: 12px; font-size: 13px; }
+div.ret-row { cursor: default; }
+div.ret-row:hover { background: none; }
+/* 수익률 월별 표 (데스크톱) · 카드 보조 줄 (모바일) */
+.ret-table-wrap { margin-top: 12px; overflow-x: auto; }
+.ret-table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+.ret-table th, .ret-table td { padding: 12px 8px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+.ret-table thead th { font-size: 12px; font-weight: 600; color: var(--sub); padding-top: 4px; }
+.ret-table th:first-child { text-align: left; }
+.ret-table tbody th { font-weight: 600; }
+.ret-table tbody th .badge { margin-left: 4px; vertical-align: 1px; }
+.ret-table tbody tr:last-child th, .ret-table tbody tr:last-child td { border-bottom: 0; }
+.ret-table tr.clickable { cursor: pointer; }
+.ret-table tr.clickable:hover { background: var(--press); }
+.ret-table tr.clickable:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.ret-sub { font-size: 12px; color: var(--sub); line-height: 1.45; word-break: keep-all; }
+.ret-sub b { font-weight: 600; }

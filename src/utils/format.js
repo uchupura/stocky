@@ -34,3 +34,11 @@ export const timeText = (iso) => {
 // 주식 수: 정수면 그대로, 소수점 주식이면 최대 6자리
 export const qtyText = (q) =>
   `${Number(q).toLocaleString('ko-KR', { maximumFractionDigits: 6 })}주`
+
+// 수익률(비율 0.0123 → "+1.23%"), 계산 불가(null)면 "–"
+export const pctText = (r, digits = 2) => {
+  if (r === null || r === undefined || !Number.isFinite(r)) return '–'
+  const s = (r * 100).toFixed(digits)
+  if (Number(s) === 0) return `${(0).toFixed(digits)}%` // -0.00% 방지
+  return `${r > 0 ? '+' : ''}${s}%`
+}

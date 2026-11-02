@@ -1,7 +1,7 @@
 <script setup>
 defineProps({
   userName: { type: String, default: '' }, // 로그인했을 때만 값이 있음
-  activeTab: { type: String, default: 'home' }, // 'home' 홈 / 'invest' 내 투자 / 'deposits' 입출금 / 'dividends' 배당
+  activeTab: { type: String, default: 'home' }, // 'home' 홈 / 'invest' 내 투자 / 'returns' 수익률 / 'deposits' 입출금 / 'dividends' 배당
 })
 const emit = defineEmits(['logout', 'navigate'])
 </script>
@@ -13,6 +13,7 @@ const emit = defineEmits(['logout', 'navigate'])
       <nav v-if="userName" class="nav d-only" aria-label="주 메뉴">
         <button type="button" :class="{ active: activeTab === 'home' }" :aria-current="activeTab === 'home' ? 'page' : undefined" @click="emit('navigate', 'home')">홈</button>
         <button type="button" :class="{ active: activeTab === 'invest' }" :aria-current="activeTab === 'invest' ? 'page' : undefined" @click="emit('navigate', 'invest')">내 투자</button>
+        <button type="button" :class="{ active: activeTab === 'returns' }" :aria-current="activeTab === 'returns' ? 'page' : undefined" @click="emit('navigate', 'returns')">수익률</button>
         <button type="button" :class="{ active: activeTab === 'deposits' }" :aria-current="activeTab === 'deposits' ? 'page' : undefined" @click="emit('navigate', 'deposits')">입출금</button>
         <button type="button" :class="{ active: activeTab === 'dividends' }" :aria-current="activeTab === 'dividends' ? 'page' : undefined" @click="emit('navigate', 'dividends')">배당</button>
       </nav>

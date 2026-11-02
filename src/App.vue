@@ -9,6 +9,7 @@ import CashSheet from './components/CashSheet.vue'
 import DepositsTab from './components/DepositsTab.vue'
 import DividendsTab from './components/DividendsTab.vue'
 import HomeTab from './components/HomeTab.vue'
+import ReturnsTab from './components/ReturnsTab.vue'
 import BaseSheet from './components/BaseSheet.vue'
 import LoginScreen from './components/LoginScreen.vue'
 import { useAuth } from './composables/useAuth'
@@ -22,8 +23,8 @@ const {
 } = usePortfolio()
 
 // ===== 탭: 홈(기본) / 내 투자 / 입출금 / 배당 — 주소 # 로 새로고침해도 유지 =====
-const TAB_HASH = { invest: '#invest', deposits: '#deposits', dividends: '#dividends' }
-const TAB_TITLE = { home: '홈', invest: '내 투자', deposits: '입출금', dividends: '배당' }
+const TAB_HASH = { invest: '#invest', returns: '#returns', deposits: '#deposits', dividends: '#dividends' }
+const TAB_TITLE = { home: '홈', invest: '내 투자', returns: '수익률', deposits: '입출금', dividends: '배당' }
 const tabFromHash = () => Object.keys(TAB_HASH).find((t) => TAB_HASH[t] === location.hash) || 'home'
 const tab = ref(tabFromHash())
 function setTab(t) {
@@ -223,7 +224,7 @@ watch(
     <!-- 탭 (모바일 — 데스크톱은 상단 메뉴) -->
     <div class="page-tabs m-only" role="tablist" aria-label="화면 선택">
       <button
-        v-for="t in ['home', 'invest', 'deposits', 'dividends']"
+        v-for="t in ['home', 'invest', 'returns', 'deposits', 'dividends']"
         :key="t"
         type="button"
         role="tab"
@@ -243,6 +244,17 @@ watch(
         <div><button class="retry" @click="load()">다시 시도</button></div>
       </section>
       <HomeTab v-else :summary="summary" @navigate="setTab" />
+    </template>
+
+    <!-- ===== 수익률 탭 ===== -->
+    <template v-else-if="tab === 'returns'">
+      <section v-if="loading" class="card" aria-busy="true"><span class="skeleton" style="width: 30%; height: 16px" /><span class="skeleton" style="width: 55%; height: 34px" /></section>
+      <section v-else-if="error" class="card state" role="alert">
+        <strong>포트폴리오를 불러오지 못했어요</strong>
+        {{ error }}
+        <div><button class="retry" @click="load()">다시 시도</button></div>
+      </section>
+      <ReturnsTab v-else :summary="summary" @toast="toast" @navigate="setTab" />
     </template>
 
 
