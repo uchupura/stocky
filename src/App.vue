@@ -371,7 +371,7 @@ watch(
         :assigning="assigning"
         @assign="onAssign"
       />
-      <PortfolioSummary :summary="shownSummary" :title="summaryTitle" @edit-cash="openCash" />
+      <PortfolioSummary :summary="shownSummary" :title="summaryTitle" :holdings="shownHoldings" @edit-cash="openCash" />
 
       <section class="card list-card" :class="{ editing }">
         <div class="list-head">

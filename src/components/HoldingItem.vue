@@ -67,7 +67,7 @@ function onRowKey(e) {
           <span v-if="holding.is_overseas" class="badge">USD</span>
           <span v-if="holding.account_name" class="badge etf acct-badge">{{ holding.account_name }}</span>
         </div>
-        <div class="qty m-only">평단 {{ unitPrice(holding.currency, holding.avg_price) }}</div>
+        <div class="qty m-only">평단 {{ unitPrice(holding.currency, holding.avg_price) }}<template v-if="holding.account_name"> · {{ holding.account_name }}</template></div>
       </div>
       <div class="col d-only">{{ unitPrice(holding.currency, holding.avg_price) }}</div>
       <div class="spark-cell">
@@ -97,7 +97,7 @@ function onRowKey(e) {
         <span v-if="holding.is_overseas" class="badge">USD</span>
         <span v-if="holding.account_name" class="badge etf acct-badge">{{ holding.account_name }}</span>
       </div>
-      <div class="qty m-only">{{ qtyText(holding.quantity) }}</div>
+      <div class="qty m-only">{{ qtyText(holding.quantity) }}<template v-if="holding.account_name"> · {{ holding.account_name }}</template></div>
     </div>
     <div class="col d-only">{{ qtyText(holding.quantity) }}</div>
     <div class="col d-only">{{ unitPrice(holding.currency, holding.avg_price) }}</div>

@@ -876,3 +876,17 @@ div.ret-row:hover { background: none; }
 /* 좁은 화면: 평가/시세 글자가 세로로 쪼개지지 않게, 공간이 모자라면 버튼 줄을 아래로 */
 .view-toggle button { white-space: nowrap; }
 @media (max-width: 380px) { .list-head { flex-wrap: wrap; row-gap: 10px; } }
+/* 내 투자 요약 — 총 수익 · 일간 수익 (나란히 두 칸) */
+.pl-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; margin-top: 14px; max-width: 420px; }
+.pl-tile { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 12px 14px; border-radius: 14px; background: var(--bg); }
+.pl-name { font-size: 13px; color: var(--sub); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-name small { font-size: 11px; }
+.pl-amt { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.pl-pill { align-self: flex-start; font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 999px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pl-pill.up { color: var(--up); background: color-mix(in srgb, var(--up) 12%, transparent); }
+.pl-pill.down { color: var(--down); background: color-mix(in srgb, var(--down) 12%, transparent); }
+.pl-pill.flat { color: var(--sub); background: var(--line); }
+@media (max-width: 360px) { .pl-tile { padding: 10px 12px; } .pl-amt { font-size: 16px; } }
+@media (min-width: 1024px) { .pl-amt { font-size: 20px; } }
+/* 모바일: 계좌 이름은 배지 대신 수량 줄에 (종목 이름이 잘리지 않게) */
+@media (max-width: 639px) { .acct-badge { display: none; } }
