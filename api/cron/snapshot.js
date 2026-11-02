@@ -10,20 +10,33 @@ const json = (body, status = 200) =>
     headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   })
 
-function authorized(request) {
+// 거부 이유 (로그용 — 비밀값 자체는 절대 남기지 않음), 통과면 ''
+function denyReason(request) {
   const secret = process.env.CRON_SECRET || ''
-  if (secret.length < 16) return false // 비밀값이 없거나 너무 짧으면 항상 거부
-  const got = Buffer.from(request.headers.get('authorization') || '')
+  if (secret.length < 16) return 'CRON_SECRET 없음(또는 16자 미만) — Vercel 환경변수 확인' // 항상 거부
+  const header = request.headers.get('authorization')
+  if (!header) return 'Authorization 헤더 없음'
+  const got = Buffer.from(header)
   const want = Buffer.from(`Bearer ${secret}`)
-  return got.length === want.length && timingSafeEqual(got, want)
+  return got.length === want.length && timingSafeEqual(got, want) ? '' : '비밀값 불일치'
 }
 
+// 실행할 때마다 한 줄 기록 → Vercel Logs 에서 확인
+const LOG = '[cron/snapshot]'
+
 export async function GET(request) {
-  if (!authorized(request)) return json({ error: 'Unauthorized' }, 401)
+  const agent = request.headers.get('user-agent') || '-'
+  const reason = denyReason(request)
+  if (reason) {
+    console.warn(LOG, 401, reason, `ua=${agent}`)
+    return json({ error: 'Unauthorized' }, 401)
+  }
   try {
-    return json(await takeSnapshots())
+    const result = await takeSnapshots()
+    console.log(LOG, 200, JSON.stringify(result), `ua=${agent}`)
+    return json(result)
   } catch (e) {
-    console.error('[api/cron/snapshot]', e)
+    console.error(LOG, 500, e)
     return json({ error: e.message || '총 자산을 기록하지 못했어요.' }, 500)
   }
 }
