@@ -1,7 +1,6 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import BaseSheet from './BaseSheet.vue'
-import AccountPicker from './AccountPicker.vue'
 import { fmt } from '../utils/format'
 import { todayKST } from '../composables/useDeposits'
 import { monthEnd } from '../utils/returns'
@@ -13,9 +12,7 @@ import { monthEnd } from '../utils/returns'
 const props = defineProps({
   open: { type: Boolean, default: false },
   snapshot: { type: Object, default: null },
-  currentTotalOf: { type: Function, default: () => 0 }, // (계좌 id|null) => 지금 총 자산 (원)
-  accounts: { type: Array, default: () => [] },
-  accountId: { type: Number, default: null },           // 수익률 탭에서 고른 계좌 (null = 전체)
+  currentTotal: { type: Number, default: 0 }, // 지금 총 자산 (원)
   saving: { type: Boolean, default: false },
   serverError: { type: String, default: '' },
 })
@@ -27,8 +24,7 @@ const prevMonth = () => {
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`
 }
 
-const form = ref({ month: '', amount: '', memo: '', today: false, account: null })
-const currentTotal = computed(() => props.currentTotalOf(form.value.account))
+const form = ref({ month: '', amount: '', memo: '', today: false })
 const touched = ref(false)
 const confirmDelete = ref(false)
 
@@ -38,8 +34,8 @@ watch(
     if (!o) return
     const s = props.snapshot
     form.value = s
-      ? { month: s.snap_date.slice(0, 7), amount: String(s.total_asset), memo: s.memo || '', today: false, account: s.account_id ?? null }
-      : { month: prevMonth(), amount: '', memo: '', today: false, account: props.accountId ?? null }
+      ? { month: s.snap_date.slice(0, 7), amount: String(s.total_asset), memo: s.memo || '', today: false }
+      : { month: prevMonth(), amount: '', memo: '', today: false }
     touched.value = false
     confirmDelete.value = false
   },
@@ -70,13 +66,13 @@ const dateLabel = computed(() => {
 })
 function useNow() {
   form.value.today = true
-  form.value.amount = String(Math.round(currentTotal.value))
+  form.value.amount = String(Math.round(props.currentTotal))
 }
 
 function submit() {
   touched.value = true
   if (!valid.value || props.saving) return
-  emit('submit', { id: props.snapshot?.id, account_id: form.value.account, snap_date: targetDate.value, total_asset: num(form.value.amount), memo: form.value.memo })
+  emit('submit', { id: props.snapshot?.id, snap_date: targetDate.value, total_asset: num(form.value.amount), memo: form.value.memo })
 }
 function onDelete() {
   if (!confirmDelete.value) { confirmDelete.value = true; return }
@@ -90,16 +86,6 @@ function onDelete() {
       <p v-if="snapshot?.source === 'auto'" class="sheet-note">월말에 자동으로 저장된 기록이에요. 고치면 직접 입력한 값으로 바뀌고, 이후 자동 기록이 덮어쓰지 않아요.</p>
       <p v-else-if="form.today" class="sheet-note">지금 화면의 총 자산(주식 평가금액 + 예수금)을 오늘 날짜로 기록해요. 오늘 한 입출금은 이 금액에 이미 들어 있는 것으로 계산하니, 입출금 탭에 먼저 입력해 주세요.</p>
       <p v-else-if="!snapshot" class="sheet-note">증권사 앱에서 그 달 말일의 총 자산(주식 평가금액 + 예수금)을 확인해 입력해 주세요. 입출금은 입출금 탭의 내역으로 계산해요.</p>
-
-      <AccountPicker
-        v-if="accounts.length"
-        v-model="form.account"
-        :accounts="accounts"
-        none-label="전체 (모든 계좌 합계)"
-        label="대상"
-        hint="계좌를 고르면 그 계좌의 총 자산"
-        id="snap-account"
-      />
 
       <div v-if="form.today" class="field">
         <span class="field-label">날짜 <span class="field-hint">{{ dateLabel }}</span></span>

@@ -322,7 +322,7 @@ watch(
         {{ error }}
         <div><button class="retry" @click="load()">다시 시도</button></div>
       </section>
-      <ReturnsTab v-else :summary="summary" :holdings="holdings" :cash="cash" :accounts="accounts" :usd-rate="usdRate" @toast="toast" @navigate="setTab" />
+      <ReturnsTab v-else :summary="summary" @toast="toast" @navigate="setTab" />
     </template>
 
 
