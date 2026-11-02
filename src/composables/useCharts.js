@@ -15,7 +15,9 @@ export function useCharts() {
   async function loadCharts(holdings, { force = false } = {}) {
     const run = ++seq
     // 아직 다 받지 못한 종목(없음·실패·이전 요청이 중간에 멈춰 '불러오는 중')은 다시
-    const todo = holdings.filter((h) => force || charts[key(h)]?.status !== 'ok')
+    // 같은 종목이 여러 계좌에 있어도 한 번만
+    const unique = [...new Map(holdings.map((h) => [key(h), h])).values()]
+    const todo = unique.filter((h) => force || charts[key(h)]?.status !== 'ok')
     for (const h of todo) charts[key(h)] = { ...(charts[key(h)] || {}), status: 'loading' }
 
     const queue = [...todo]

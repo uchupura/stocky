@@ -858,3 +858,21 @@ div.ret-row:hover { background: none; }
 .ret-table tr.clickable:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
 .ret-sub { font-size: 12px; color: var(--sub); line-height: 1.45; word-break: keep-all; }
 .ret-sub b { font-weight: 600; }
+
+/* ===== 내 투자 — 계좌 필터 · 미지정 안내 ===== */
+.acct-bar { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.acct-chips { margin-top: 0; padding: 0 0 2px; }
+.acct-chips small { font-size: 12px; font-weight: 500; opacity: 0.75; margin-left: 2px; }
+.acct-notice { background: var(--card); border-radius: 16px; padding: 12px 14px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; font-size: 13px; color: var(--sub); }
+.acct-notice b { color: var(--text); margin-right: 4px; }
+.acct-assign { display: flex; gap: 6px; align-items: center; }
+.chart-select-inline {
+  height: 32px; padding: 0 28px 0 10px; border: 0; border-radius: 10px;
+  background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b95a1' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 9px center;
+  color: var(--text); font: inherit; font-size: 13px; font-weight: 600; appearance: none; -webkit-appearance: none; cursor: pointer;
+}
+.acct-help { width: 100%; }
+.acct-badge { max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 좁은 화면: 평가/시세 글자가 세로로 쪼개지지 않게, 공간이 모자라면 버튼 줄을 아래로 */
+.view-toggle button { white-space: nowrap; }
+@media (max-width: 380px) { .list-head { flex-wrap: wrap; row-gap: 10px; } }

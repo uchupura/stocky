@@ -7,7 +7,8 @@
 //   (한국 = 전날 종가, 미국 = 새벽 마감 종가). 그날 낮에 한 입출금이 다음 구간에 들어가도록.
 //   월 단위로만 저장: 기록 날짜가 그 달의 말일일 때만 저장, 아니면 아무것도 안 함 (시세 조회도 안 함)
 //   (cron 은 28~31일 22:00 UTC = 다음 날 07:00 KST 에 실행 → 말일 다음 날 아침에 한 번 저장됨)
-//   직접 입력('manual')한 날은 덮어쓰지 않음. 총 자산 0원(빈 포트폴리오)은 건너뜀.
+//   직접 입력('manual')한 날은 덮어쓰지 않음. 총 자산 0원(빈 포트폴리오·빈 계좌)은 건너뜀.
+//   전체(account_id 비움) + 계좌별(013: 그 계좌 주식 평가금액 + 예수금, 달러는 현재 환율) 함께 저장
 // =====================================================================
 import { adminDb } from './kis.js'
 import { refreshPrices } from './refresh.js'
@@ -34,25 +35,38 @@ export async function takeSnapshots({ date = addDays(kstToday(), -1), only = nul
     refresh = { error: e.message }
   }
 
-  const { data: sums, error } = await db.from('portfolio_summary').select('portfolio_id, total_asset')
-  if (error) throw error
+  const [sums, hv, cb, fx, manual] = await Promise.all([
+    db.from('portfolio_summary').select('portfolio_id, total_asset'),
+    db.from('holding_values').select('portfolio_id, account_id, value_krw').not('account_id', 'is', null),
+    db.from('cash_balances').select('portfolio_id, account_id, currency, amount').not('account_id', 'is', null),
+    db.from('exchange_rates').select('rate_to_krw').eq('currency', 'USD').maybeSingle(),
+    db.from('asset_snapshots').select('portfolio_id, account_id').eq('snap_date', date).eq('source', 'manual'),
+  ])
+  for (const r of [sums, hv, cb, fx, manual]) if (r.error) throw r.error
 
-  const { data: manual, error: mErr } = await db
-    .from('asset_snapshots')
-    .select('portfolio_id')
-    .eq('snap_date', date)
-    .eq('source', 'manual')
-  if (mErr) throw mErr
-  const keep = new Set(manual.map((r) => r.portfolio_id))
+  // 총 자산: 'portfolio|' = 전체, 'portfolio|account' = 계좌
+  const totals = new Map()
+  const add = (pid, acc, v) => { const k = `${pid}|${acc ?? ''}`; totals.set(k, (totals.get(k) || 0) + Number(v || 0)) }
+  for (const s of sums.data) add(s.portfolio_id, null, s.total_asset)
+  const usd = Number(fx.data?.rate_to_krw || 0)
+  for (const h of hv.data) add(h.portfolio_id, h.account_id, h.value_krw)
+  for (const c of cb.data) add(c.portfolio_id, c.account_id, c.currency === 'USD' ? Math.round(Number(c.amount) * usd) : c.amount)
 
-  const rows = sums
-    .filter((s) => (!only || only.includes(s.portfolio_id)) && !keep.has(s.portfolio_id) && Number(s.total_asset) > 0)
-    .map((s) => ({ portfolio_id: s.portfolio_id, snap_date: date, total_asset: Math.round(Number(s.total_asset)), source: 'auto' }))
+  const keep = new Set(manual.data.map((r) => `${r.portfolio_id}|${r.account_id ?? ''}`))
+  const rows = []
+  let skippedManual = 0
+  for (const [k, v] of totals) {
+    const [pid, acc] = k.split('|')
+    if (only && !only.includes(Number(pid))) continue
+    if (keep.has(k)) { skippedManual++; continue }
+    if (!(v > 0)) continue
+    rows.push({ portfolio_id: Number(pid), account_id: acc ? Number(acc) : null, snap_date: date, total_asset: Math.round(v), source: 'auto' })
+  }
 
   if (rows.length) {
-    const { error: uErr } = await db.from('asset_snapshots').upsert(rows, { onConflict: 'portfolio_id,snap_date' })
+    const { error: uErr } = await db.from('asset_snapshots').upsert(rows, { onConflict: 'portfolio_id,snap_date,account_id' })
     if (uErr) throw uErr
   }
 
-  return { date, saved: rows.length, skippedManual: keep.size, refresh }
+  return { date, saved: rows.length, accounts: rows.filter((r) => r.account_id).length, skippedManual, refresh }
 }

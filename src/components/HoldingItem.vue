@@ -65,6 +65,7 @@ function onRowKey(e) {
         <div class="name">
           <span class="text">{{ holding.name }}</span>
           <span v-if="holding.is_overseas" class="badge">USD</span>
+          <span v-if="holding.account_name" class="badge etf acct-badge">{{ holding.account_name }}</span>
         </div>
         <div class="qty m-only">평단 {{ unitPrice(holding.currency, holding.avg_price) }}</div>
       </div>
@@ -94,6 +95,7 @@ function onRowKey(e) {
       <div class="name">
         <span class="text">{{ holding.name }}</span>
         <span v-if="holding.is_overseas" class="badge">USD</span>
+        <span v-if="holding.account_name" class="badge etf acct-badge">{{ holding.account_name }}</span>
       </div>
       <div class="qty m-only">{{ qtyText(holding.quantity) }}</div>
     </div>

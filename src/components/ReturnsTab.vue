@@ -10,8 +10,13 @@ import { fmt, signed, tone, pctText } from '../utils/format'
 // 수익률 탭: 누적 수익률(누적 입금액 대비) · 월별 표(계좌 총액·월 입금액·월 수익·월 수익률·누적 입금액·누적 수익·누적 수익률) · 월말 총 자산 입력
 //   기록 = 월말 자동 기록(012, Vercel Cron) + 직접 입력한 총 자산
 //   이번 달은 지금 총 자산을 임시 끝 값으로 사용 (진행 중)
+//   계좌별(013): 그 계좌의 월말 기록 + 그 계좌 입출금 + 그 계좌 지금 총 자산(주식 + 예수금)
 const props = defineProps({
   summary: { type: Object, required: true },
+  holdings: { type: Array, default: () => [] },
+  cash: { type: Array, default: () => [] },
+  accounts: { type: Array, default: () => [] },
+  usdRate: { type: Number, default: null },
 })
 const emit = defineEmits(['toast', 'navigate'])
 
@@ -24,16 +29,33 @@ watch(pid, (id) => id && load(), { immediate: true })
 const loaded = computed(() => snap.loaded.value && dep.loaded.value)
 const error = computed(() => snap.error.value || dep.error.value)
 
-const totalAsset = computed(() => Number(props.summary.total_asset ?? props.summary.total_value ?? 0))
+// ===== 계좌 선택: null = 전체 =====
+const acct = ref(null)
+watch(() => props.accounts, (list) => { if (acct.value && !list.some((a) => a.id === acct.value)) acct.value = null })
+const acctName = computed(() => props.accounts.find((a) => a.id === acct.value)?.name || '')
+
+// 지금 총 자산: 전체 = DB 합계, 계좌 = 그 계좌 주식 평가금액 + 예수금(달러는 현재 환율)
+function totalOf(accountId) {
+  if (accountId == null) return Number(props.summary.total_asset ?? props.summary.total_value ?? 0)
+  const stocks = props.holdings.filter((h) => h.account_id === accountId).reduce((t, h) => t + Number(h.value_krw), 0)
+  const cash = props.cash.filter((c) => c.account_id === accountId)
+    .reduce((t, c) => t + (c.currency === 'USD' ? Math.round(c.amount * (props.usdRate || 0)) : c.amount), 0)
+  return stocks + cash
+}
+const totalAsset = computed(() => totalOf(acct.value))
+const mySnaps = computed(() => snap.snapshots.value.filter((s) => (s.account_id ?? null) === acct.value))
+const myDeps = computed(() => (acct.value == null ? dep.deposits.value : dep.deposits.value.filter((d) => d.account_id === acct.value)))
+// 계좌를 골랐는데 미지정 주식·예수금이 남아 있으면 안내
+const hasLoose = computed(() => props.holdings.some((h) => h.account_id == null) || props.cash.some((c) => c.account_id == null && c.amount > 0))
 const result = computed(() =>
-  computeReturns(snap.snapshots.value, dep.deposits.value, { date: todayKST(), total_asset: totalAsset.value }))
+  computeReturns(mySnaps.value, myDeps.value, { date: todayKST(), total_asset: totalAsset.value }))
 
 // 월별 목록 (최근 달이 위)
 const monthRows = computed(() => [...result.value.months].reverse())
 // 그 달의 마지막 "저장된" 기록 (지금 값 제외) → 눌러서 수정
 const lastSnapOf = computed(() => {
   const m = {}
-  for (const s of snap.snapshots.value) m[s.snap_date.slice(0, 7)] = s
+  for (const s of mySnaps.value) m[s.snap_date.slice(0, 7)] = s
   return m
 })
 const firstKey = computed(() => result.value.months[0]?.key)
@@ -85,10 +107,21 @@ async function onDelete(s) {
   </section>
 
   <template v-else>
+    <!-- 계좌 선택 -->
+    <div v-if="accounts.length" class="acct-bar">
+      <div class="filter-chips acct-chips" role="radiogroup" aria-label="수익률 계좌 선택">
+        <button type="button" role="radio" :aria-checked="acct === null" :class="{ on: acct === null }" @click="acct = null">전체</button>
+        <button v-for="a in accounts" :key="a.id" type="button" role="radio" :aria-checked="acct === a.id" :class="{ on: acct === a.id }" @click="acct = a.id">{{ a.name }}</button>
+      </div>
+      <p v-if="acct !== null && hasLoose" class="acct-notice">
+        <span><b>계좌 미지정</b> 주식·예수금이 있어요. 내 투자 탭에서 계좌를 지정해야 계좌별 수익률이 정확해요.</span>
+      </p>
+    </div>
+
     <!-- 누적 수익률 (원금 대비) -->
     <section class="card summary home-summary">
       <div class="sum-main">
-        <p class="label">누적 수익률 <span class="label-sub">누적 입금액 대비</span></p>
+        <p class="label">누적 수익률 <span class="label-sub">{{ acctName ? `${acctName} · ` : '' }}누적 입금액 대비</span></p>
         <p class="total" :class="tone(result.cumRate)">{{ pctText(result.cumRate) }}</p>
         <p v-if="result.cumRate !== null" class="total-pl flat">
           누적 수익 <span :class="tone(result.cumProfit)">{{ signed(result.cumProfit) }}원</span>
@@ -106,7 +139,7 @@ async function onDelete(s) {
 
     <!-- 월 수익을 계산할 기록이 부족할 때 -->
     <section v-if="!result.intervals.length" class="card state">
-      <template v-if="snap.snapshots.value.length">
+      <template v-if="mySnaps.length">
         <strong>오늘부터 기록이 시작됐어요</strong>
         내일부터 오늘 대비 수익을 보여드려요. 지난 달들의 월말 총 자산을 입력하면 그 달부터 바로 볼 수 있어요.
       </template>
@@ -199,7 +232,9 @@ async function onDelete(s) {
   <SnapshotSheet
     :open="sheetOpen"
     :snapshot="editing"
-    :current-total="totalAsset"
+    :current-total-of="totalOf"
+    :accounts="accounts"
+    :account-id="acct"
     :saving="saving"
     :server-error="sheetError"
     @close="sheetOpen = false"

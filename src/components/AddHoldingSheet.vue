@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import BaseSheet from './BaseSheet.vue'
+import AccountPicker from './AccountPicker.vue'
 import { supabase } from '../lib/supabase'
 import { fetchQuote } from '../lib/api'
 import { fmt, signed, tone, unitPrice, fxText } from '../utils/format'
@@ -8,8 +9,11 @@ import { fmt, signed, tone, unitPrice, fxText } from '../utils/format'
 const props = defineProps({
   open: { type: Boolean, default: false },
   stocks: { type: Array, default: () => [] },        // 이미 등록된 종목 (검색어 없을 때 표시)
-  heldSymbols: { type: Array, default: () => [] },   // 이미 보유 중인 종목 코드
+  held: { type: Array, default: () => [] },          // 이미 보유 중 [{ symbol, account_id }] — 같은 종목도 다른 계좌엔 추가 가능
   usdRate: { type: Number, default: null },
+  accounts: { type: Array, default: () => [] },
+  addAccount: { type: Function, default: null },
+  defaultAccountId: { type: Number, default: null }, // 내 투자에서 고른 계좌 필터
   saving: { type: Boolean, default: false },
   serverError: { type: String, default: '' },        // DB 저장 실패 메시지
 })
@@ -31,7 +35,7 @@ const touched = ref(false) // 한 번 "추가하기"를 눌러야 에러 문구 
 const body = ref(null)
 
 function emptyForm() {
-  return { name: '', symbol: '', market: 'KR', price: '', qty: '', avg: '', fx: '' }
+  return { name: '', symbol: '', market: 'KR', price: '', qty: '', avg: '', fx: '', account: props.defaultAccountId ?? null }
 }
 
 function reset() {
@@ -54,7 +58,8 @@ watch(step, async () => {
 })
 
 // ===== 1단계: 종목 검색 (전체 상장 종목 · stock_master) =====
-const held = computed(() => new Set(props.heldSymbols))
+const heldSymbols = computed(() => new Set(props.held.map((h) => h.symbol)))
+const heldKey = (symbol, accountId) => props.held.some((h) => h.symbol === symbol && (h.account_id ?? null) === (accountId ?? null))
 const registered = computed(() => Object.fromEntries(props.stocks.map((s) => [s.symbol, s])))
 
 const results = ref([])
@@ -119,7 +124,6 @@ const quote = ref({ status: 'idle' }) // idle | loading | ok | error
 let quoteSeq = 0
 
 async function pick(c) {
-  if (held.value.has(c.symbol)) return
   selected.value = c
   mode.value = 'pick'
   form.value = emptyForm()
@@ -175,6 +179,9 @@ const errors = computed(() => {
     if (!sym) e.symbol = '종목 코드를 입력해 주세요'
     else if (props.stocks.some((s) => s.symbol.toUpperCase() === sym)) e.symbol = '이미 등록된 종목 코드예요. 검색에서 골라 주세요'
   }
+  if (mode.value === 'pick' && selected.value && heldKey(selected.value.symbol, f.account)) {
+    e.account = '이 계좌에 이미 있는 종목이에요. 다른 계좌를 고르거나, 목록에서 그 종목을 눌러 수량을 고쳐 주세요'
+  }
   if (needManualPrice.value && !(num(f.price) > 0)) e.price = '현재가를 숫자로 입력해 주세요'
   if (!(num(f.qty) > 0)) e.qty = '보유 수량은 0보다 커야 해요'
   if (!(num(f.avg) >= 0)) e.avg = '평균 단가를 숫자로 입력해 주세요'
@@ -200,7 +207,7 @@ function submit() {
   touched.value = true
   if (!valid.value || props.saving || quote.value.status === 'loading') return
   const f = form.value
-  const base = { quantity: num(f.qty), avgPrice: num(f.avg) }
+  const base = { quantity: num(f.qty), avgPrice: num(f.avg), accountId: f.account }
   if (currency.value === 'USD' && num(f.fx) > 0) base.avgFxRate = num(f.fx)
   if (mode.value === 'new') {
     const symbol = f.symbol.trim().toUpperCase()
@@ -259,7 +266,7 @@ const rateText = (r) => `${r > 0 ? '+' : ''}${Number(r).toFixed(2)}%`
 
       <ul class="pick-list" :aria-busy="searching">
         <li v-for="c in candidates" :key="`${c.market}:${c.symbol}`">
-          <button class="pick" :disabled="held.has(c.symbol)" @click="pick(c)">
+          <button class="pick" @click="pick(c)">
             <span class="logo sm" :style="{ background: c.logo_color }">{{ c.name[0] }}</span>
             <span class="pick-main">
               <span class="pick-name">
@@ -269,7 +276,7 @@ const rateText = (r) => `${r > 0 ? '+' : ''}${Number(r).toFixed(2)}%`
               </span>
               <span v-if="c.nameSub" class="pick-sub text">{{ c.nameSub }}</span>
             </span>
-            <span class="pick-sub">{{ held.has(c.symbol) ? '보유 중' : `${tickerText(c)} · ${EXCHANGE_LABEL[c.exchange] || c.market}` }}</span>
+            <span class="pick-sub">{{ heldSymbols.has(c.symbol) ? '보유 중 · 다른 계좌에 추가' : `${tickerText(c)} · ${EXCHANGE_LABEL[c.exchange] || c.market}` }}</span>
           </button>
         </li>
         <li v-if="searching" class="pick-empty">검색 중…</li>
@@ -328,6 +335,11 @@ const rateText = (r) => `${r > 0 ? '+' : ''}${Number(r).toFixed(2)}%`
         <div class="field-input"><input v-model="form.price" inputmode="decimal" placeholder="0" autocomplete="off"><span class="suffix">{{ unit }}</span></div>
         <span v-if="showErr('price')" class="field-error">{{ errors.price }}</span>
       </label>
+
+      <div>
+        <AccountPicker v-model="form.account" :accounts="accounts" :add-account="addAccount" id="add-account" />
+        <span v-if="showErr('account')" class="field-error">{{ errors.account }}</span>
+      </div>
 
       <label class="field">
         <span class="field-label">보유 수량</span>

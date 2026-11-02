@@ -1,18 +1,21 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import BaseSheet from './BaseSheet.vue'
+import AccountPicker from './AccountPicker.vue'
 import { fmt, signed, tone, fxText, unitPrice } from '../utils/format'
 
-// 보유 정보 수정: 수량 · 평균 단가 · 매수 환율(해외)
+// 보유 정보 수정: 계좌 · 수량 · 평균 단가 · 매수 환율(해외)
 const props = defineProps({
   holding: { type: Object, default: null }, // holding_values 한 행 (null 이면 닫힘)
   usdRate: { type: Number, default: null },
+  accounts: { type: Array, default: () => [] },
+  addAccount: { type: Function, default: null },
   saving: { type: Boolean, default: false },
   serverError: { type: String, default: '' },
 })
 const emit = defineEmits(['close', 'submit'])
 
-const form = ref({ qty: '', avg: '', fx: '' })
+const form = ref({ qty: '', avg: '', fx: '', account: null })
 const touched = ref(false)
 
 watch(
@@ -23,6 +26,7 @@ watch(
       qty: String(Number(h.quantity)),
       avg: String(Number(h.avg_price)),
       fx: h.avg_fx_rate != null ? String(Number(h.avg_fx_rate)) : '',
+      account: h.account_id ?? null,
     }
     touched.value = false
   },
@@ -78,7 +82,7 @@ function useTodayFx() {
 function submit() {
   touched.value = true
   if (!valid.value || props.saving) return
-  const payload = { quantity: num(form.value.qty), avgPrice: num(form.value.avg) }
+  const payload = { quantity: num(form.value.qty), avgPrice: num(form.value.avg), accountId: form.value.account }
   if (isUS.value) payload.avgFxRate = num(form.value.fx) > 0 ? num(form.value.fx) : null
   emit('submit', payload)
 }
@@ -97,6 +101,8 @@ function submit() {
           <div class="pick-sub">현재가 <b class="quote-price">{{ unitPrice(holding.currency, holding.current_price) }}</b></div>
         </div>
       </div>
+
+      <AccountPicker v-model="form.account" :accounts="accounts" :add-account="addAccount" id="edit-account" />
 
       <label class="field">
         <span class="field-label">보유 수량</span>

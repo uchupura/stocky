@@ -6,6 +6,7 @@ import HoldingList from './components/HoldingList.vue'
 import AddHoldingSheet from './components/AddHoldingSheet.vue'
 import EditHoldingSheet from './components/EditHoldingSheet.vue'
 import CashSheet from './components/CashSheet.vue'
+import AccountBar from './components/AccountBar.vue'
 import DepositsTab from './components/DepositsTab.vue'
 import DividendsTab from './components/DividendsTab.vue'
 import HomeTab from './components/HomeTab.vue'
@@ -18,9 +19,68 @@ import { usePortfolio } from './composables/usePortfolio'
 import { fmt, qtyText, fxText, timeText } from './utils/format'
 
 const {
-  summary, holdings, stocks, usdRate, fxUpdatedAt, refreshing, loading, error,
-  load, saveOrder, addHolding, updateHolding, removeHolding, refreshPrices, saveCash,
+  summary, holdings, stocks, accounts, cash, usdRate, fxUpdatedAt, refreshing, loading, error,
+  load, saveOrder, addHolding, updateHolding, removeHolding, refreshPrices, saveCash, assignAccount, addAccount,
 } = usePortfolio()
+
+// ===== 내 투자 — 계좌 필터: 'all' | 계좌 id | 'none'(미지정) — 고른 값은 브라우저에 기억 =====
+const ACCT_KEY = 'stocky-account'
+const savedAcct = localStorage.getItem(ACCT_KEY)
+const acct = ref(savedAcct === 'none' ? 'none' : Number(savedAcct) > 0 ? Number(savedAcct) : 'all')
+watch(acct, (v) => localStorage.setItem(ACCT_KEY, String(v)))
+// 계좌가 지워졌거나 미지정 항목이 없어지면 전체로
+watch([accounts, holdings, cash], () => {
+  if (typeof acct.value === 'number' && !accounts.value.some((a) => a.id === acct.value)) acct.value = 'all'
+  if (acct.value === 'none' && !holdings.value.some((h) => h.account_id == null) && !cash.value.some((c) => c.account_id == null && c.amount > 0)) acct.value = 'all'
+})
+const acctId = computed(() => (typeof acct.value === 'number' ? acct.value : null)) // 새로 추가할 때 기본 계좌
+const inAcct = (x) => acct.value === 'all' || (acct.value === 'none' ? x.account_id == null : x.account_id === acct.value)
+const accountName = computed(() => Object.fromEntries(accounts.value.map((a) => [a.id, a.name])))
+// 화면에 보일 보유 주식 (전체 보기에서는 계좌 이름 배지)
+const shownHoldings = computed(() =>
+  holdings.value.filter(inAcct).map((h) => ({
+    ...h,
+    account_name: acct.value === 'all' && accounts.value.length ? accountName.value[h.account_id] || '미지정' : '',
+  })),
+)
+// 요약 카드: 전체 = DB 합계 그대로, 계좌를 고르면 그 계좌만 다시 계산
+const shownSummary = computed(() => {
+  const s = summary.value
+  if (!s || acct.value === 'all') return s
+  const hs = holdings.value.filter(inAcct)
+  const cs = cash.value.filter(inAcct)
+  const sum = (list, f) => list.reduce((t, x) => t + Number(f(x) || 0), 0)
+  const total_value = sum(hs, (h) => h.value_krw)
+  const total_cost = sum(hs, (h) => h.cost_krw)
+  const cash_krw = sum(cs.filter((c) => c.currency === 'KRW'), (c) => c.amount)
+  const cash_usd = sum(cs.filter((c) => c.currency === 'USD'), (c) => c.amount)
+  const cash_usd_krw = Math.round(cash_usd * (usdRate.value || 0))
+  return {
+    ...s,
+    total_value, total_cost, total_profit: total_value - total_cost,
+    domestic_value: sum(hs.filter((h) => h.market === 'KR'), (h) => h.value_krw),
+    overseas_value: sum(hs.filter((h) => h.market === 'US'), (h) => h.value_krw),
+    holding_count: hs.length,
+    cash_krw, cash_usd, cash_usd_krw,
+    total_asset: total_value + cash_krw + cash_usd_krw,
+  }
+})
+const summaryTitle = computed(() =>
+  acct.value === 'all' ? '' : acct.value === 'none' ? '계좌 미지정' : accountName.value[acct.value] || '')
+
+const assigning = ref(false)
+async function onAssign(accountId) {
+  assigning.value = true
+  try {
+    const r = await assignAccount(accountId)
+    const kept = r.skipped.length ? `${r.skipped.join(', ')}은(는) 그 계좌에 이미 있어 그대로 뒀어요` : ''
+    toast(!kept ? `${accountName.value[accountId]} 계좌로 지정했어요` : r.moved ? `${r.moved}종목을 지정했어요 · ${kept}` : kept)
+  } catch (e) {
+    toast(e.message)
+  } finally {
+    assigning.value = false
+  }
+}
 
 // ===== 탭: 홈(기본) / 내 투자 / 입출금 / 배당 — 주소 # 로 새로고침해도 유지 =====
 const TAB_HASH = { invest: '#invest', returns: '#returns', deposits: '#deposits', dividends: '#dividends' }
@@ -28,6 +88,8 @@ const TAB_TITLE = { home: '홈', invest: '내 투자', returns: '수익률', dep
 const tabFromHash = () => Object.keys(TAB_HASH).find((t) => TAB_HASH[t] === location.hash) || 'home'
 const tab = ref(tabFromHash())
 function setTab(t) {
+  // 다른 탭에서 계좌·입출금을 바꿨을 수 있으니 내 투자·수익률로 올 때 조용히 다시 불러옴
+  if (t !== tab.value && (t === 'invest' || t === 'returns') && summary.value) load({ silent: true })
   tab.value = t
   history.replaceState(null, '', location.pathname + location.search + (TAB_HASH[t] || ''))
   window.scrollTo({ top: 0 })
@@ -73,6 +135,12 @@ function toast(msg) {
 // ===== 순서 변경 =====
 async function onReorder(ids) {
   try {
+    // 계좌로 걸러 보는 중이면, 보이는 종목들이 차지하던 자리 안에서만 순서를 바꿈
+    if (acct.value !== 'all') {
+      const shown = new Set(ids)
+      const queue = [...ids]
+      ids = holdings.value.map((h) => (shown.has(h.holding_id) ? queue.shift() : h.holding_id))
+    }
     await saveOrder(ids)
     toast('순서를 바꿨어요')
   } catch (e) {
@@ -106,7 +174,7 @@ async function confirmDelete() {
 const addOpen = ref(false)
 const adding = ref(false)
 const addError = ref('')
-const heldSymbols = computed(() => holdings.value.map((h) => h.symbol))
+const held = computed(() => holdings.value.map((h) => ({ symbol: h.symbol, account_id: h.account_id ?? null })))
 
 function openAdd() {
   addError.value = ''
@@ -254,7 +322,7 @@ watch(
         {{ error }}
         <div><button class="retry" @click="load()">다시 시도</button></div>
       </section>
-      <ReturnsTab v-else :summary="summary" @toast="toast" @navigate="setTab" />
+      <ReturnsTab v-else :summary="summary" :holdings="holdings" :cash="cash" :accounts="accounts" :usd-rate="usdRate" @toast="toast" @navigate="setTab" />
     </template>
 
 
@@ -294,12 +362,21 @@ watch(
 
     <!-- 정상 -->
     <template v-else>
-      <PortfolioSummary :summary="summary" @edit-cash="openCash" />
+      <AccountBar
+        v-model="acct"
+        :accounts="accounts"
+        :holdings="holdings"
+        :cash="cash"
+        :usd-rate="usdRate"
+        :assigning="assigning"
+        @assign="onAssign"
+      />
+      <PortfolioSummary :summary="shownSummary" :title="summaryTitle" @edit-cash="openCash" />
 
       <section class="card list-card" :class="{ editing }">
         <div class="list-head">
           <div class="list-title">
-            <h2>보유 주식<span>{{ holdings.length }}</span></h2>
+            <h2>보유 주식<span>{{ shownHoldings.length }}</span></h2>
             <div class="view-toggle" role="radiogroup" aria-label="보기 선택">
               <button
                 v-for="o in [{ v: 'value', t: '평가' }, { v: 'quote', t: '시세' }]"
@@ -313,15 +390,15 @@ watch(
             </div>
           </div>
           <div class="list-actions">
-            <span v-if="!editing && holdings.length" class="hint">≡ 를 끌어서 순서 변경</span>
+            <span v-if="!editing && shownHoldings.length" class="hint">≡ 를 끌어서 순서 변경</span>
             <span v-if="editing" class="hint">종목을 누르면 수정</span>
-            <button v-if="holdings.length" class="chip-btn" :class="{ on: editing }" @click="editing = !editing">
+            <button v-if="shownHoldings.length" class="chip-btn" :class="{ on: editing }" @click="editing = !editing">
               {{ editing ? '완료' : '편집' }}
             </button>
             <button class="chip-btn primary" @click="openAdd">+ 추가</button>
           </div>
         </div>
-        <div v-if="holdings.length && view === 'quote'" class="thead quote d-only" aria-hidden="true">
+        <div v-if="shownHoldings.length && view === 'quote'" class="thead quote d-only" aria-hidden="true">
           <span class="c-name">종목</span>
           <span>내 평단가</span>
           <span class="c-chart">오늘 그래프</span>
@@ -329,7 +406,7 @@ watch(
           <span>오늘 수익률</span>
           <span />
         </div>
-        <div v-else-if="holdings.length" class="thead d-only" aria-hidden="true">
+        <div v-else-if="shownHoldings.length" class="thead d-only" aria-hidden="true">
           <span class="c-name">종목</span>
           <span>보유 수량</span>
           <span>평균 단가</span>
@@ -338,13 +415,13 @@ watch(
           <span>수익금 (수익률)</span>
           <span />
         </div>
-        <div v-if="!holdings.length" class="state">
-          <strong>보유한 주식이 없어요</strong>
+        <div v-if="!shownHoldings.length" class="state">
+          <strong>{{ acct === 'all' ? '보유한 주식이 없어요' : '이 계좌에 보유한 주식이 없어요' }}</strong>
           <button class="retry" @click="openAdd">+ 주식 추가하기</button>
         </div>
         <HoldingList
           v-else
-          :holdings="holdings"
+          :holdings="shownHoldings"
           :editing="editing"
           :view="view"
           :charts="charts"
@@ -352,7 +429,7 @@ watch(
           @delete="deleteTarget = $event"
           @edit="openEdit"
         />
-        <p v-if="holdings.some((h) => h.fx_missing)" class="fx-note">
+        <p v-if="shownHoldings.some((h) => h.fx_missing)" class="fx-note">
           <span class="fx-missing">환율 미입력</span>
           매수 환율을 넣지 않은 해외 종목은 환율 손익 없이 계산돼요 · <b>편집</b>에서 종목을 눌러 입력
         </p>
@@ -376,7 +453,10 @@ watch(
   <AddHoldingSheet
     :open="addOpen"
     :stocks="stocks"
-    :held-symbols="heldSymbols"
+    :held="held"
+    :accounts="accounts"
+    :add-account="addAccount"
+    :default-account-id="acctId"
     :usd-rate="usdRate"
     :saving="adding"
     :server-error="addError"
@@ -387,6 +467,8 @@ watch(
   <!-- 보유 정보 수정 -->
   <EditHoldingSheet
     :holding="editTarget"
+    :accounts="accounts"
+    :add-account="addAccount"
     :usd-rate="usdRate"
     :saving="editSaving"
     :server-error="editError"
@@ -397,8 +479,10 @@ watch(
   <!-- 예수금 수정 -->
   <CashSheet
     :open="cashOpen"
-    :krw="Number(summary?.cash_krw || 0)"
-    :usd="Number(summary?.cash_usd || 0)"
+    :cash="cash"
+    :accounts="accounts"
+    :add-account="addAccount"
+    :account-id="acctId"
     :usd-rate="usdRate"
     :saving="cashSaving"
     :server-error="cashError"

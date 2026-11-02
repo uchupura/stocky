@@ -4,6 +4,7 @@ import { fmt, signed, tone, rateText, ratePct, usdText } from '../utils/format'
 
 const props = defineProps({
   summary: { type: Object, required: true },
+  title: { type: String, default: '' }, // 계좌를 골랐을 때 계좌 이름
 })
 const emit = defineEmits(['edit-cash'])
 
@@ -23,7 +24,7 @@ const pctCash = computed(() => (hasCash.value ? share(cashTotal.value) : 0))
 <template>
   <section class="card summary">
     <div class="sum-main">
-      <p class="label">{{ hasCash ? '총 자산' : '총 평가금액' }}</p>
+      <p class="label">{{ hasCash ? '총 자산' : '총 평가금액' }} <span v-if="title" class="label-sub">{{ title }}</span></p>
       <p class="total">{{ fmt(totalAsset) }}원</p>
       <!-- 수익은 주식만 기준 (예수금은 손익 없음) -->
       <p class="total-pl" :class="tone(summary.total_profit)">
