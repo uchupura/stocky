@@ -244,16 +244,16 @@ function onKey(e) {
       <!-- 필터 (그래프 위 한 줄) -->
       <div class="chart-filters">
         <label class="chart-select">
-          <span class="sr-only">계좌</span>
+          <span class="chart-select-label" aria-hidden="true">계좌</span>
           <select v-model="accountId" aria-label="계좌 필터">
-            <option value="">계좌 전체</option>
+            <option value="">전체</option>
             <option v-for="a in usedAccounts" :key="a.id" :value="String(a.id)">{{ a.name }}</option>
           </select>
         </label>
         <label class="chart-select">
-          <span class="sr-only">종목</span>
+          <span class="chart-select-label" aria-hidden="true">종목</span>
           <select v-model="stockKey" aria-label="종목 필터">
-            <option value="">종목 전체</option>
+            <option value="">전체</option>
             <option v-for="s in stocks" :key="s.key" :value="s.key">{{ s.name }}</option>
           </select>
         </label>
