@@ -3,6 +3,10 @@ import { computed, watch } from 'vue'
 import { useDeposits } from '../composables/useDeposits'
 import { useDividends } from '../composables/useDividends'
 import DividendChart from './DividendChart.vue'
+import CumReturnChart from './CumReturnChart.vue'
+import { useSnapshots } from '../composables/useSnapshots'
+import { computeReturns } from '../utils/returns'
+import { todayKST } from '../composables/useDeposits'
 import { fmt, signed, tone, rateText, ratePct } from '../utils/format'
 
 // 홈: 총 자산 · 누적 원금 · 누적 원금 대비 수익률
@@ -18,7 +22,9 @@ const pid = computed(() => props.summary?.portfolio_id ?? null)
 const { deposits, loaded, error, totals, load } = useDeposits(pid)
 // 배당 그래프용
 const div = useDividends(pid)
-watch(pid, (id) => { if (id) { load(); div.load() } }, { immediate: true })
+// 계좌 현황 그래프용 (수익률 탭과 같은 계산 — 전체 월말 기록만)
+const snap = useSnapshots(pid)
+watch(pid, (id) => { if (id) { load(); div.load(); snap.load() } }, { immediate: true })
 
 const n = (v) => Number(v || 0)
 // 008(예수금) 적용 전이면 total_asset 이 없음 → 주식 평가금액
@@ -28,6 +34,8 @@ const principal = computed(() => totals.value.principal)
 const profit = computed(() => totalAsset.value - principal.value)
 // 원금이 있어야(0보다 커야) 수익률 계산 가능
 const canRate = computed(() => loaded.value && principal.value > 0)
+const returns = computed(() =>
+  computeReturns(snap.snapshots.value.filter((s) => s.account_id == null), deposits.value, { date: todayKST(), total_asset: totalAsset.value }))
 </script>
 
 <template>
@@ -58,6 +66,14 @@ const canRate = computed(() => loaded.value && principal.value > 0)
       </button>
     </div>
   </section>
+
+  <!-- 계좌 현황 그래프 -->
+  <section v-if="(!snap.loaded.value && !snap.error.value) || !loaded" class="card" aria-busy="true"><span class="skeleton" style="height: 220px" /></section>
+  <section v-else-if="snap.error.value" class="card state" role="alert">
+    <strong>계좌 현황 그래프를 불러오지 못했어요</strong>
+    {{ snap.error.value }}
+  </section>
+  <CumReturnChart v-else :months="returns.months" :deposits="deposits" @navigate="emit('navigate', $event)" />
 
   <!-- 배당 그래프 -->
   <section v-if="!div.loaded.value && !div.error.value" class="card" aria-busy="true"><span class="skeleton" style="height: 200px" /></section>

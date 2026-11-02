@@ -240,12 +240,14 @@ const toneOf = (r) => (r > 0 ? 'up' : r < 0 ? 'down' : 'flat')
       </div>
     </div>
 
-    <table class="sr-only">
-      <caption>{{ headline.title }}</caption>
-      <thead><tr><th>월</th><th>월 수익</th><th>월 수익률</th><th>누적 수익률</th></tr></thead>
-      <tbody>
-        <tr v-for="m in months" :key="m.key"><td>{{ m.year }}년 {{ m.month }}월</td><td>{{ m.profit === null ? '–' : `${signed(m.profit)}원` }}</td><td>{{ pctText(m.rate) }}</td><td>{{ pctText(m.cumRate) }}</td></tr>
-      </tbody>
-    </table>
+    <div class="sr-only">
+      <table>
+        <caption>{{ headline.title }}</caption>
+        <thead><tr><th>월</th><th>월 수익</th><th>월 수익률</th><th>누적 수익률</th></tr></thead>
+        <tbody>
+          <tr v-for="m in months" :key="m.key"><td>{{ m.year }}년 {{ m.month }}월</td><td>{{ m.profit === null ? '–' : `${signed(m.profit)}원` }}</td><td>{{ pctText(m.rate) }}</td><td>{{ pctText(m.cumRate) }}</td></tr>
+        </tbody>
+      </table>
+    </div>
   </section>
 </template>

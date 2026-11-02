@@ -327,17 +327,19 @@ function onKey(e) {
       </div>
 
       <!-- 화면 읽기 프로그램용 표 -->
-      <table class="sr-only">
-        <caption>{{ headline.title }}</caption>
-        <thead v-if="view !== 'cum'"><tr><th>기간</th><th>국내</th><th>해외</th><th>합계</th></tr></thead>
-        <thead v-else><tr><th>월</th><th>그달 배당</th><th>누적</th></tr></thead>
-        <tbody v-if="view !== 'cum'">
-          <tr v-for="b in bars" :key="b.label"><td>{{ b.label }}</td><td>{{ fmt(b.kr) }}원</td><td>{{ fmt(b.us) }}원</td><td>{{ fmt(b.kr + b.us) }}원</td></tr>
-        </tbody>
-        <tbody v-else>
-          <tr v-for="p in cumPoints" :key="p.key"><td>{{ p.label }}</td><td>{{ fmt(p.add) }}원</td><td>{{ fmt(p.value) }}원</td></tr>
-        </tbody>
-      </table>
+      <div class="sr-only">
+        <table>
+          <caption>{{ headline.title }}</caption>
+          <thead v-if="view !== 'cum'"><tr><th>기간</th><th>국내</th><th>해외</th><th>합계</th></tr></thead>
+          <thead v-else><tr><th>월</th><th>그달 배당</th><th>누적</th></tr></thead>
+          <tbody v-if="view !== 'cum'">
+            <tr v-for="b in bars" :key="b.label"><td>{{ b.label }}</td><td>{{ fmt(b.kr) }}원</td><td>{{ fmt(b.us) }}원</td><td>{{ fmt(b.kr + b.us) }}원</td></tr>
+          </tbody>
+          <tbody v-else>
+            <tr v-for="p in cumPoints" :key="p.key"><td>{{ p.label }}</td><td>{{ fmt(p.add) }}원</td><td>{{ fmt(p.value) }}원</td></tr>
+          </tbody>
+        </table>
+      </div>
     </template>
   </section>
 </template>

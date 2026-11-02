@@ -890,3 +890,19 @@ div.ret-row:hover { background: none; }
 @media (min-width: 1024px) { .pl-amt { font-size: 20px; } }
 /* 모바일: 계좌 이름은 배지 대신 수량 줄에 (종목 이름이 잘리지 않게) */
 @media (max-width: 639px) { .acct-badge { display: none; } }
+
+/* ===== 홈 — 계좌 현황 그래프 (누적 입금액 · 계좌 총액 선) ===== */
+:root { --viz-dep: #3182f6; --viz-asset: #f04452; } /* 누적 입금액 파랑 · 계좌 총액 빨강 — 팔레트 검사 통과 (라이트·다크) */
+.dep-line { fill: none; stroke: var(--viz-dep); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.dep-dot { fill: var(--viz-dep); stroke: var(--card); stroke-width: 2; }
+.asset-line { fill: none; stroke: var(--viz-asset); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.asset-area { fill: var(--viz-asset); opacity: 0.08; }
+.asset-dot { fill: var(--viz-asset); stroke: var(--card); stroke-width: 2; }
+.sw-line.dep { background: var(--viz-dep); }
+.sw-line.asset { background: var(--viz-asset); }
+.sw-line { display: inline-block; width: 14px; height: 3px; border-radius: 2px; background: var(--up); margin-right: 5px; vertical-align: 3px; }
+.cr-halo { fill: none; stroke: var(--card); stroke-width: 6; stroke-linejoin: round; stroke-linecap: round; }
+.cr-legend { margin-top: 12px; }
+.cr-tip { width: 196px; }                        /* 카드 안에 머물게 고정 폭 (가운데 정렬 ±98px) */
+.cr-tip b, .cr-tip em { white-space: nowrap; }
+.asset-line.gap { stroke-dasharray: 4 4; opacity: 0.7; }
