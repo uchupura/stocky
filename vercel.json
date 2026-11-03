@@ -35,6 +35,9 @@
   "functions": {
     "api/loc/*.js": {
       "maxDuration": 60
+    },
+    "api/refresh.js": {
+      "maxDuration": 60
     }
   }
 }

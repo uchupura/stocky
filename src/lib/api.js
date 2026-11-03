@@ -38,10 +38,11 @@ export function fetchFx(date) {
 
 /**
  * 보유 종목 현재가 + 원/달러 환율 일괄 갱신 (서버가 1분에 한 번만 실제 조회)
- * @returns {Promise<{ skipped: boolean, updated?: number, failed?: Array<{symbol, error}>, fxRate: number, updatedAt: string }>}
+ * sync: 메리츠 연결 계좌도 증권사 값으로 맞춤 ([새로고침] 버튼) → 결과 broker
+ * @returns {Promise<{ skipped: boolean, updated?: number, failed?: Array<{symbol, error}>, fxRate: number, updatedAt: string, broker: object|null }>}
  */
-export function refreshMarket() {
-  return call('/api/refresh', { method: 'POST' }, '현재가를 갱신하지 못했어요.')
+export function refreshMarket({ sync = false } = {}) {
+  return call('/api/refresh', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sync }) }, '현재가를 갱신하지 못했어요.')
 }
 
 // ===== LOC 수동 운영 (자동매매 탭) =====

@@ -209,13 +209,14 @@ export function usePortfolio() {
   /**
    * 보유 종목 현재가 + 환율 갱신 (서버 /api/refresh) → 화면 다시 불러오기
    * 서버가 1분에 한 번만 실제로 조회하므로 자주 불러도 괜찮다.
-   * @returns {Promise<{ skipped: boolean, failed: Array }>}
+   * sync: 메리츠 연결 계좌도 증권사 값으로 맞춤 → 결과 broker
+   * @returns {Promise<{ skipped: boolean, failed: Array, broker: object|null }>}
    */
-  async function refreshPrices() {
+  async function refreshPrices({ sync = false } = {}) {
     if (refreshing.value) return null
     refreshing.value = true
     try {
-      const r = await refreshMarket()
+      const r = await refreshMarket({ sync })
       await load({ silent: true })
       return r
     } finally {

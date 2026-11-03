@@ -181,3 +181,43 @@ export async function ordersOn(symbol, date) {
       at: o.oder_exec_ymdh,
     }))
 }
+
+/** 다음 페이지가 있으면 이어서 조회 (tr_cont '1' + tr_cont_key) — 실패하면 MeritzError */
+async function allPages(path, params, label) {
+  const rows = []
+  let key = null
+  for (let page = 0; page < 20; page++) {
+    const p = key ? { ...params, tr_cont: '1', tr_cont_key: key } : params
+    const r = await request('GET', path, p)
+    if (!Array.isArray(r.data)) {
+      if (r.status === 200 && r.body.rsp_cd === '5820') break // 조회할 내역 없음
+      throw new MeritzError(`${label}을(를) 불러오지 못했어요: ${r.body.rsp_msg || r.status}`)
+    }
+    rows.push(...r.data)
+    if (r.body.tr_cont !== '1' || !r.body.tr_cont_key) break
+    key = r.body.tr_cont_key
+  }
+  return rows
+}
+
+/**
+ * 계좌 전체 (조회만) — 하나라도 실패하면 MeritzError (중간 결과로 맞추지 않게)
+ *   kr  : 국내 잔고 [{ symbol, name, qty, avg }]  (국내 잔고 API 는 해외 종목도 같이 줌 → 코드에 '.' 있는 줄은 뺌)
+ *   us  : 해외 잔고 [{ symbol, name, qty, avg, vendor }]
+ *   krw : 원화 예수금 (tfam)
+ *   usd : 달러 예수금 — 결제 전 매수 금액까지 뺀 값 (estm_frcr_amt)
+ */
+export async function account() {
+  const kr = (await allPages('/accounts/v1/me/holdings', {}, '국내 잔고'))
+    .filter((h) => h.iscd && !h.iscd.includes('.') && Number(h.rmnd_qty) > 0)
+    .map((h) => ({ symbol: h.iscd.replace(/^A/, ''), name: h.isnm, qty: Number(h.rmnd_qty), avg: Number(h.byng_unpr) }))
+  const us = (await allPages('/accounts/v1/me/overseas/holdings', {}, '해외 잔고'))
+    .filter((h) => Number(h.rmnd_dqty) > 0)
+    .map((h) => ({ symbol: h.ovrs_stck_symb_iscd, name: h.isnm, qty: Number(h.rmnd_dqty), avg: Number(h.avrg_unpr), vendor: h.ovrs_exch_vndr_idno }))
+  const dep = first((await request('GET', '/accounts/v1/me/deposit')).data)
+  if (dep.tfam == null) throw new MeritzError('원화 예수금을 불러오지 못했어요.')
+  const cur = await request('GET', '/accounts/v1/me/overseas/currencies')
+  if (!Array.isArray(cur.data)) throw new MeritzError(`달러 예수금을 불러오지 못했어요: ${cur.body.rsp_msg || cur.status}`)
+  const usdRow = cur.data.find((c) => c.crcd === 'USD')
+  return { kr, us, krw: Number(dep.tfam), usd: usdRow ? Number(usdRow.estm_frcr_amt) : 0 }
+}

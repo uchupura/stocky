@@ -247,15 +247,27 @@ async function onCash(payload) {
 
 // ===== 현재가 · 환율 갱신 =====
 const refreshError = ref('')
+// 메리츠 계좌 맞춤 결과 → 안내 문구 (바뀐 게 없으면 '')
+function brokerText(b) {
+  if (!b || b.error) return ''
+  const parts = [b.added && `추가 ${b.added}`, b.updated && `수정 ${b.updated}`, b.removed && `삭제 ${b.removed}`, b.cashChanged && '예수금'].filter(Boolean)
+  return parts.length ? `메리츠 계좌 맞춤: ${parts.join(' · ')}` : '메리츠 계좌는 이미 같아요'
+}
+// manual: [새로고침] 버튼 → 메리츠 연결 계좌도 증권사 값으로 맞춤
 async function refresh({ manual = false } = {}) {
   refreshError.value = ''
   try {
-    const r = await refreshPrices()
+    const r = await refreshPrices({ sync: manual })
     if (!r) return
-    if (r.failed?.length) {
-      refreshError.value = `일부 종목 갱신 실패: ${r.failed.map((f) => f.symbol).join(', ')}`
-    } else if (manual) {
-      toast(r.skipped ? '방금 갱신한 최신 값이에요' : '현재가·환율을 갱신했어요')
+    const b = r.broker
+    const errs = []
+    if (r.failed?.length) errs.push(`일부 종목 갱신 실패: ${r.failed.map((f) => f.symbol).join(', ')}`)
+    if (b?.error) errs.push(`메리츠 계좌를 맞추지 못했어요: ${b.error}`)
+    if (b?.skipped?.length) errs.push(`메리츠에서 못 넣은 종목: ${b.skipped.map((x) => x.name || x.symbol).join(', ')}`)
+    if (errs.length) refreshError.value = errs.join(' · ')
+    if (manual) {
+      const base = r.skipped ? '방금 갱신한 최신 값이에요' : '현재가·환율을 갱신했어요'
+      toast([base, brokerText(b)].filter(Boolean).join(' · '))
     }
   } catch (e) {
     console.error(e)
