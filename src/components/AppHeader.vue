@@ -16,6 +16,7 @@ const emit = defineEmits(['logout', 'navigate'])
         <button type="button" :class="{ active: activeTab === 'returns' }" :aria-current="activeTab === 'returns' ? 'page' : undefined" @click="emit('navigate', 'returns')">수익률</button>
         <button type="button" :class="{ active: activeTab === 'deposits' }" :aria-current="activeTab === 'deposits' ? 'page' : undefined" @click="emit('navigate', 'deposits')">입출금</button>
         <button type="button" :class="{ active: activeTab === 'dividends' }" :aria-current="activeTab === 'dividends' ? 'page' : undefined" @click="emit('navigate', 'dividends')">배당</button>
+        <button type="button" :class="{ active: activeTab === 'auto' }" :aria-current="activeTab === 'auto' ? 'page' : undefined" @click="emit('navigate', 'auto')">자동매매</button>
       </nav>
       <div class="header-actions">
         <label v-if="userName" class="search d-only">

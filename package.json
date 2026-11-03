@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "sync:stocks": "node scripts/sync-stock-master.mjs"
+    "sync:stocks": "node scripts/sync-stock-master.mjs",
+    "test": "node --test server/"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.118.0",

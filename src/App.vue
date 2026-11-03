@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import AppHeader from './components/AppHeader.vue'
 import PortfolioSummary from './components/PortfolioSummary.vue'
 import HoldingList from './components/HoldingList.vue'
@@ -11,6 +11,8 @@ import DepositsTab from './components/DepositsTab.vue'
 import DividendsTab from './components/DividendsTab.vue'
 import HomeTab from './components/HomeTab.vue'
 import ReturnsTab from './components/ReturnsTab.vue'
+import AutoTradeTab from './components/AutoTradeTab.vue'
+import ProfitHistory from './components/ProfitHistory.vue'
 import BaseSheet from './components/BaseSheet.vue'
 import LoginScreen from './components/LoginScreen.vue'
 import { useAuth } from './composables/useAuth'
@@ -83,10 +85,12 @@ async function onAssign(accountId) {
 }
 
 // ===== 탭: 홈(기본) / 내 투자 / 입출금 / 배당 — 주소 # 로 새로고침해도 유지 =====
-const TAB_HASH = { invest: '#invest', returns: '#returns', deposits: '#deposits', dividends: '#dividends' }
-const TAB_TITLE = { home: '홈', invest: '내 투자', returns: '수익률', deposits: '입출금', dividends: '배당' }
+const TAB_HASH = { invest: '#invest', returns: '#returns', deposits: '#deposits', dividends: '#dividends', auto: '#auto', profits: '#auto-history' }
+const TAB_TITLE = { home: '홈', invest: '내 투자', returns: '수익률', deposits: '입출금', dividends: '배당', auto: '자동매매', profits: '익절 히스토리' }
 const tabFromHash = () => Object.keys(TAB_HASH).find((t) => TAB_HASH[t] === location.hash) || 'home'
 const tab = ref(tabFromHash())
+// 모바일 탭이 넘치면 옆으로 넘기므로, 고른 탭이 보이게 스크롤
+watch(tab, () => nextTick(() => document.querySelector('.page-tabs .on')?.scrollIntoView({ inline: 'nearest', block: 'nearest' })))
 function setTab(t) {
   // 다른 탭에서 계좌·입출금을 바꿨을 수 있으니 내 투자·수익률로 올 때 조용히 다시 불러옴
   if (t !== tab.value && (t === 'invest' || t === 'returns') && summary.value) load({ silent: true })
@@ -280,7 +284,7 @@ watch(
 </script>
 
 <template>
-  <AppHeader :user-name="session ? displayName : ''" :active-tab="tab" @logout="onLogout" @navigate="setTab" />
+  <AppHeader :user-name="session ? displayName : ''" :active-tab="tab === 'profits' ? 'auto' : tab" @logout="onLogout" @navigate="setTab" />
 
   <!-- 로그인 상태 확인 중: 아무것도 그리지 않음 -->
   <template v-if="!ready" />
@@ -292,12 +296,12 @@ watch(
     <!-- 탭 (모바일 — 데스크톱은 상단 메뉴) -->
     <div class="page-tabs m-only" role="tablist" aria-label="화면 선택">
       <button
-        v-for="t in ['home', 'invest', 'returns', 'deposits', 'dividends']"
+        v-for="t in ['home', 'invest', 'returns', 'deposits', 'dividends', 'auto']"
         :key="t"
         type="button"
         role="tab"
         :aria-selected="tab === t"
-        :class="{ on: tab === t }"
+        :class="{ on: tab === t || (t === 'auto' && tab === 'profits') }"
         @click="setTab(t)"
       >{{ TAB_TITLE[t] }}</button>
     </div>
@@ -313,6 +317,12 @@ watch(
       </section>
       <HomeTab v-else :summary="summary" @navigate="setTab" />
     </template>
+
+    <!-- ===== 자동매매 탭 (LOC 수동 운영) ===== -->
+    <AutoTradeTab v-else-if="tab === 'auto'" :portfolio-id="summary?.portfolio_id ?? null" @toast="toast" @navigate="setTab" />
+
+    <!-- ===== 익절 히스토리 (자동매매 하위 페이지) ===== -->
+    <ProfitHistory v-else-if="tab === 'profits'" :portfolio-id="summary?.portfolio_id ?? null" @navigate="setTab" />
 
     <!-- ===== 수익률 탭 ===== -->
     <template v-else-if="tab === 'returns'">

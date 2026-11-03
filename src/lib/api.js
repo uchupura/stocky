@@ -43,3 +43,21 @@ export function fetchFx(date) {
 export function refreshMarket() {
   return call('/api/refresh', { method: 'POST' }, '현재가를 갱신하지 못했어요.')
 }
+
+// ===== LOC 수동 운영 (자동매매 탭) =====
+async function postJson(path, body, fallback) {
+  const res = await fetch(path, { method: 'POST', headers: { 'content-type': 'application/json', ...(await authHeader()) }, body: JSON.stringify(body) })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw Object.assign(new Error(data.error || fallback), { status: res.status, data })
+  return data
+}
+
+/** 오늘 LOC 주문 계산 (주문 없음) — DB 사이클 설정으로, 날짜별 내역 저장 */
+export function locPreview(cycleId) {
+  return postJson('/api/loc/preview', { cycleId }, '주문을 계산하지 못했어요.')
+}
+
+/** 오늘 LOC 주문 전송 — 409 면 error.data.preview 에 새 계산 결과 */
+export function locSubmit(cycleId, signature) {
+  return postJson('/api/loc/submit', { cycleId, signature }, '주문을 보내지 못했어요.')
+}

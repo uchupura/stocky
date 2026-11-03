@@ -18,9 +18,17 @@ function localApi() {
           const handler = mod[req.method]
           if (!handler) throw Object.assign(new Error('Method not allowed'), { status: 405 })
 
+          // POST 등은 본문도 그대로 전달 (Vercel 함수와 같게)
+          let body
+          if (req.method !== 'GET' && req.method !== 'HEAD') {
+            const chunks = []
+            for await (const c of req) chunks.push(c)
+            body = Buffer.concat(chunks)
+          }
           const response = await handler(new Request(`http://${req.headers.host}/api${req.url}`, {
             method: req.method,
             headers: req.headers,
+            body,
           }))
           res.statusCode = response.status
           response.headers.forEach((v, k) => res.setHeader(k, v))

@@ -910,3 +910,40 @@ div.ret-row:hover { background: none; }
 .cr-tip { width: 196px; }                        /* 카드 안에 머물게 고정 폭 (가운데 정렬 ±98px) */
 .cr-tip b, .cr-tip em { white-space: nowrap; }
 .asset-line.gap { stroke-dasharray: 4 4; opacity: 0.7; }
+
+/* ===== 자동매매 탭 ===== */
+.at-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 16px; margin: 4px 0 8px; }
+.at-wide { grid-column: 1 / -1; }
+.at-sub { font-size: 12px; color: var(--sub); font-weight: 500; margin-left: 4px; }
+.at-notes { display: flex; flex-direction: column; gap: 6px; }
+.at-warn { font-size: 14px; color: var(--text); font-weight: 600; }
+.at-info { font-size: 13px; color: var(--sub); margin-top: 8px; }
+.at-table td, .at-table th { padding: 10px 8px; }
+.at-step th { color: var(--sub); font-weight: 500; }
+.at-h3 { font-size: 16px; font-weight: 700; margin: 20px 0 4px; }
+.at-form .list-head { padding: 0 0 8px; }
+.at-form .primary-btn, .at-table + .primary-btn, .ret-table-wrap + .primary-btn { width: 100%; margin-top: 16px; }
+/* 모바일 탭 6개: 글자가 쪼개지지 않게, 넘치면 옆으로 넘김 */
+.page-tabs { overflow-x: auto; scrollbar-width: none; gap: 16px; }
+.page-tabs::-webkit-scrollbar { display: none; }
+.page-tabs button { white-space: nowrap; flex: 0 0 auto; }
+@media (max-width: 360px) { .page-tabs { gap: 12px; } }
+.at-result-sum { margin: 0 0 4px; font-size: 14px; }
+.at-result-sum b { color: var(--text); }
+.at-low th, .at-low td { font-weight: 700; }
+.summary .sum-side .primary-btn { width: 100%; margin-top: 12px; }
+/* 자동매매 — 사이클 설정 접기 */
+.at-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; padding: 0 0 8px; background: none; border: 0; color: var(--text); cursor: pointer; text-align: left; }
+.at-toggle h2 { font-size: 20px; font-weight: 700; }
+.at-toggle:focus-visible { outline: 2px solid var(--blue); outline-offset: 4px; border-radius: 8px; }
+.at-chev { font-size: 22px; line-height: 1; color: var(--sub); transition: transform 0.15s; display: inline-block; } /* 접힘: ⌄ (펼치기) */
+.at-chev.open { transform: rotate(180deg); }                                                                     /* 펼침: ⌃ (접기) */
+.at-folded { font-size: 14px; color: var(--sub); line-height: 1.5; margin-bottom: 4px; }
+/* 익절 히스토리 */
+.ph-link { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.ph-back { display: inline-block; margin-bottom: 10px; font-size: 14px; }
+.ph-period { font-size: 13px; font-weight: 500; color: var(--sub); margin-left: 6px; }
+.ph-row { width: 100%; }
+.ph-daily { padding: 0 4px 12px; }
+.ph-row .dep-account, .ph-row .dep-memo { white-space: normal; overflow: visible; }
+@media (max-width: 639px) { .ph-period { display: block; margin-left: 0; margin-top: 2px; } }
