@@ -34,6 +34,14 @@ export function lastClosedUsDate(now = new Date()) {
 /** 실제 주문 모드인지 (LOC_ORDER_ENABLED = 1 / true — 앞뒤 공백·따옴표 무시) */
 export const orderEnabled = () => ['1', 'true'].includes(String(process.env.LOC_ORDER_ENABLED || '').trim().replace(/^['"]|['"]$/g, '').toLowerCase())
 
+/** 계산한 주문 → 보낼 주문 목록 (매도 먼저, 매수는 계단 순서) */
+export function orderList(plan) {
+  const list = []
+  if (plan.sell) list.push({ tag: 'sell', side: 'sell', ...plan.sell })
+  for (const b of plan.buys) for (const st of b.steps) list.push({ tag: b.tag, side: 'buy', price: st.price, qty: st.qty })
+  return list
+}
+
 /** 입력 설정 검사 · 정리 */
 export function normalize(s = {}) {
   const symbol = String(s.symbol || '').trim().toUpperCase()
@@ -163,9 +171,7 @@ export async function submitPlan(settings, signature) {
   const totalAmount = p.plan.buys.reduce((t, b) => t + b.amount, 0)
   if (totalAmount > p.remaining + 0.01 || totalAmount > settings.dailyAmount + 0.01) throw new Error('매수 금액이 하루 투자금·남은 예산을 넘어요.')
 
-  const list = []
-  if (p.plan.sell) list.push({ tag: 'sell', side: 'sell', ...p.plan.sell })
-  for (const b of p.plan.buys) for (const st of b.steps) list.push({ tag: b.tag, side: 'buy', price: st.price, qty: st.qty })
+  const list = orderList(p.plan)
 
   const dryRun = !orderEnabled()
   if (dryRun) return { dryRun: true, list, preview: p }

@@ -9,7 +9,7 @@ defineProps({
 })
 const emit = defineEmits(['close', 'read', 'read-all'])
 
-const ICON = { refresh: '↻', loc_buy: '$' }
+const ICON = { refresh: '↻', loc_buy: '$', loc_order: '▶' }
 function ago(iso) {
   const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
   if (m < 1) return '방금'
