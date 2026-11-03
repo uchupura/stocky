@@ -18,7 +18,6 @@ import ProfitHistory from './components/ProfitHistory.vue'
 import BaseSheet from './components/BaseSheet.vue'
 import LoginScreen from './components/LoginScreen.vue'
 import { useAuth } from './composables/useAuth'
-import { useCharts } from './composables/useCharts'
 import { usePortfolio } from './composables/usePortfolio'
 import { fmt, qtyText, fxText, timeText } from './utils/format'
 
@@ -107,13 +106,7 @@ window.addEventListener('hashchange', () => {
 // ===== 보기 전환: 평가 / 시세 (고른 값은 브라우저에 기억) =====
 const VIEW_KEY = 'stocky-view'
 const view = ref(localStorage.getItem(VIEW_KEY) === 'quote' ? 'quote' : 'value')
-const { charts, loadCharts } = useCharts()
 watch(view, (v) => localStorage.setItem(VIEW_KEY, v))
-// 시세 보기일 때만 그래프를 불러옴 (보유 종목이 바뀌면 새 종목만 추가로)
-watch(
-  () => [view.value, holdings.value.map((h) => `${h.market}:${h.symbol}`).join()],
-  () => { if (view.value === 'quote' && holdings.value.length) loadCharts(holdings.value) },
-)
 
 // ===== 로그인 =====
 const { session, displayName, ready, signOut, loginUrl } = useAuth()
@@ -296,7 +289,6 @@ async function reloadAll() {
     await load({ silent: true })
     if (error.value) return
     await refresh({ manual: true })
-    if (view.value === 'quote') loadCharts(holdings.value, { force: true })
   } finally {
     reloading.value = false
   }
@@ -457,7 +449,6 @@ watch(
         <div v-if="shownHoldings.length && view === 'quote'" class="thead quote d-only" aria-hidden="true">
           <span class="c-name">종목</span>
           <span>내 평단가</span>
-          <span class="c-chart">오늘 그래프</span>
           <span>현재가</span>
           <span>오늘 수익률</span>
           <span />
@@ -480,7 +471,6 @@ watch(
           :holdings="shownHoldings"
           :editing="editing"
           :view="view"
-          :charts="charts"
           @reorder="onReorder"
           @delete="deleteTarget = $event"
           @edit="openEdit"

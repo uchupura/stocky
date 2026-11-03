@@ -1,19 +1,17 @@
 <script setup>
 import { computed } from 'vue'
-import Sparkline from './Sparkline.vue'
 import { fmt, signed, tone, rateText, ratePct, unitPrice, qtyText } from '../utils/format'
 
 const props = defineProps({
   holding: { type: Object, required: true },
   editing: { type: Boolean, default: false }, // 편집 모드: 손잡이 대신 삭제 버튼, 줄을 누르면 수정
   view: { type: String, default: 'value' },   // 'value' 평가 / 'quote' 시세
-  chart: { type: Object, default: null },     // 시세 보기: 하루 그래프 { status, points, prevClose }
 })
 
 // ===== 시세 보기: 오늘 수익률 = (현재가 − 전일 종가) ÷ 전일 종가 =====
 const today = computed(() => {
   const h = props.holding
-  const prev = Number(h.prev_close) > 0 ? Number(h.prev_close) : Number(props.chart?.prevClose) || null
+  const prev = Number(h.prev_close) > 0 ? Number(h.prev_close) : null
   const cur = Number(h.current_price)
   if (!prev || !(cur > 0)) return null
   const change = cur - prev
@@ -25,11 +23,6 @@ const changeText = (h, v) => {
   return h.currency === 'USD' ? `${sign}$${Math.abs(v).toFixed(2)}` : `${sign}${fmt(Math.abs(v))}원`
 }
 const todayRate = (r) => `${r > 0 ? '+' : ''}${r.toFixed(2)}%`
-const chartLabel = computed(() => {
-  const p = props.chart?.points
-  if (!p?.length) return `${props.holding.name} 오늘 그래프 없음`
-  return `${props.holding.name} 오늘 주가 그래프: 시가 ${unitPrice(props.holding.currency, p[0][1])}, 현재 ${unitPrice(props.holding.currency, props.holding.current_price)}`
-})
 const emit = defineEmits(['delete', 'edit'])
 
 const pct = (r) => `${r > 0 ? '+' : ''}${Number(r).toFixed(1)}%`
@@ -59,7 +52,7 @@ function onRowKey(e) {
   >
     <div class="logo" :style="{ background: holding.logo_color }">{{ holding.name[0] }}</div>
 
-    <!-- ===== 시세 보기: 이름 · 평단가 · 하루 그래프 · 현재가 · 오늘 수익률 ===== -->
+    <!-- ===== 시세 보기: 이름 · 평단가 · 현재가 · 오늘 수익률 ===== -->
     <template v-if="view === 'quote'">
       <div class="info">
         <div class="name">
@@ -70,16 +63,6 @@ function onRowKey(e) {
         <div class="qty m-only">평단 {{ unitPrice(holding.currency, holding.avg_price) }}<template v-if="holding.account_name"> · {{ holding.account_name }}</template></div>
       </div>
       <div class="col d-only">{{ unitPrice(holding.currency, holding.avg_price) }}</div>
-      <div class="spark-cell">
-        <span v-if="!chart || chart.status === 'loading'" class="skeleton spark-skel" aria-label="그래프 불러오는 중" />
-        <Sparkline
-          v-else
-          :points="chart.points || []"
-          :prev-close="today?.prev ?? chart.prevClose"
-          :price="Number(holding.current_price)"
-          :label="chartLabel"
-        />
-      </div>
       <div class="amount">
         <div class="value">{{ unitPrice(holding.currency, holding.current_price) }}</div>
         <div v-if="today" class="pl" :class="tone(today.change)">
