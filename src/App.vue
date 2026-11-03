@@ -345,7 +345,7 @@ watch(
         <div><button class="retry" @click="load()">다시 시도</button></div>
       </section>
       <DepositsTab v-else-if="tab === 'deposits'" :portfolio-id="summary?.portfolio_id ?? null" @toast="toast" />
-      <DividendsTab v-else :portfolio-id="summary?.portfolio_id ?? null" :holdings="holdings" @toast="toast" />
+      <DividendsTab v-else :portfolio-id="summary?.portfolio_id ?? null" :holdings="holdings" @toast="toast" @cash-changed="load({ silent: true })" />
     </template>
 
     <!-- ===== 내 투자 탭 ===== -->

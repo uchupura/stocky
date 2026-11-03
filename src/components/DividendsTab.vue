@@ -9,7 +9,7 @@ const props = defineProps({
   portfolioId: { type: Number, default: null },
   holdings: { type: Array, default: () => [] }, // 종목 고를 때 보유 종목을 먼저 보여줌
 })
-const emit = defineEmits(['toast'])
+const emit = defineEmits(['toast', 'cash-changed']) // cash-changed: 예수금이 바뀜 → 앱이 다시 불러옴
 
 const { dividends, accounts, loading, loaded, error, totals, load, addAccount, saveDividend, removeDividend } =
   useDividends(toRef(props, 'portfolioId'))
@@ -54,6 +54,7 @@ async function onSubmit(p) {
   try {
     const r = await saveDividend(p)
     sheetOpen.value = false
+    if (r.cashChanged) emit('cash-changed')
     const base = p.id ? '배당 내역을 수정했어요' : `${p.stock_name} 배당을 기록했어요`
     emit('toast', r.clamped ? `${base} · 예수금이 모자라 0원으로 맞췄어요` : r.cashChanged ? `${base} · ${p.id ? '예수금도 함께 고쳤어요' : '예수금에 반영했어요'}` : base)
   } catch (e) {
@@ -67,6 +68,7 @@ async function onDelete(d) {
   try {
     const r = await removeDividend(d.id)
     sheetOpen.value = false
+    if (r.cashChanged) emit('cash-changed')
     emit('toast', r.clamped ? '배당 내역을 삭제했어요 · 예수금이 모자라 0원으로 맞췄어요' : r.cashChanged ? '배당 내역을 삭제하고 예수금에서 뺐어요' : '배당 내역을 삭제했어요')
   } catch (e) {
     sheetError.value = e.message
