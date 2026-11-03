@@ -1,6 +1,8 @@
 // =====================================================================
-// 월말 총 자산 기록 (012 asset_snapshots) — 서버 전용, Vercel Cron 이 호출
-//   1) 현재가·환율 갱신 (refreshPrices 재사용, 실패해도 마지막 시세로 계속)
+// 월말 총 자산 기록 (012 asset_snapshots) — 서버 전용
+//   지금은 새로고침(/api/refresh)이 ensureLastMonthSnapshot 으로 호출: 다음 달 첫 새로고침 때 그 시점 값을 지난달 말일로 저장
+//   (Vercel Cron 은 삭제 — api/cron/snapshot.js 로 직접 부르면 아래 Cron 방식 그대로 동작)
+//   1) 현재가·환율 갱신 (refreshPrices 재사용, 실패해도 마지막 시세로 계속 · refresh:false 면 건너뜀)
 //   2) 포트폴리오별 총 자산(portfolio_summary.total_asset) → 'auto' 로 저장
 //
 //   기록 날짜 = KST 어제: 아침 7시 무렵 실행되므로 값은 "전날 장 마감" 기준
@@ -22,17 +24,19 @@ const addDays = (ymd, n) => {
 
 export const isMonthEnd = (ymd) => addDays(ymd, 1).endsWith('-01')
 
-// only: 특정 포트폴리오만 (테스트용)
-export async function takeSnapshots({ date = addDays(kstToday(), -1), only = null } = {}) {
+// only: 특정 포트폴리오만 · refresh: false 면 시세 갱신 없이 지금 저장된 시세로
+export async function takeSnapshots({ date = addDays(kstToday(), -1), only = null, refresh: doRefresh = true } = {}) {
   if (!isMonthEnd(date)) return { date, saved: 0, skipped: '말일이 아니라 저장하지 않음' }
   const db = adminDb()
 
-  let refresh
-  try {
-    refresh = await refreshPrices()
-  } catch (e) {
-    console.error('[snapshot] refresh', e)
-    refresh = { error: e.message }
+  let refresh = null
+  if (doRefresh) {
+    try {
+      refresh = await refreshPrices()
+    } catch (e) {
+      console.error('[snapshot] refresh', e)
+      refresh = { error: e.message }
+    }
   }
 
   const [sums, hv, cb, fx, manual] = await Promise.all([
@@ -69,4 +73,28 @@ export async function takeSnapshots({ date = addDays(kstToday(), -1), only = nul
   }
 
   return { date, saved: rows.length, accounts: rows.filter((r) => r.account_id).length, skippedManual, refresh }
+}
+
+/** 지난달 말일 (KST, YYYY-MM-DD) */
+export const lastMonthEnd = (today = kstToday()) => addDays(`${today.slice(0, 7)}-01`, -1)
+
+/**
+ * 새로고침 때 호출 — 로그인한 사용자 포트폴리오의 지난달 말일 기록이 없으면 지금 총 자산으로 저장
+ *   이미 있으면(직접 입력·자동) 아무것도 안 함 → 한 달에 한 번만 저장
+ *   포트폴리오를 그 말일 뒤에 만들었으면 저장 안 함 (그때는 자산이 없었으므로)
+ *   시세는 방금 갱신한 값을 그대로 씀 (refresh: false)
+ * @returns 저장 결과 | null (저장할 필요 없음)
+ */
+export async function ensureLastMonthSnapshot(userId, { today = kstToday() } = {}) {
+  const db = adminDb()
+  const date = lastMonthEnd(today)
+  const { data: pf, error } = await db.from('portfolios').select('id, created_at').eq('owner_id', userId).order('id').limit(1).maybeSingle()
+  if (error) throw error
+  if (!pf) return null
+  const createdKst = new Date(new Date(pf.created_at).getTime() + 9 * 3600000).toISOString().slice(0, 10)
+  if (createdKst > date) return null
+  const { data: had, error: hErr } = await db.from('asset_snapshots').select('source').eq('portfolio_id', pf.id).eq('snap_date', date).is('account_id', null).maybeSingle()
+  if (hErr) throw hErr
+  if (had) return null
+  return takeSnapshots({ date, only: [pf.id], refresh: false })
 }

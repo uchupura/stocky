@@ -3,9 +3,11 @@
 //   sync: 메리츠 연결 계좌(MERITZ_ACCOUNT_ID)의 보유 종목·예수금을 증권사 값으로 맞춘 뒤 갱신
 //         실패해도 현재가 갱신은 계속 → 결과의 broker.error 로 알림 · [새로고침] 결과 알림 저장
 //   매번: 지난 미국 거래일 LOC 매수 결과 확인 → 알림 (날짜마다 1개) — 실패해도 갱신 결과는 그대로
+//   매번: 지난달 말일 총 자산 기록이 없으면 지금 값으로 저장 (월별 수익률용, 한 달에 한 번) — 실패해도 그대로
 import { refreshPrices } from '../server/refresh.js'
 import { syncMeritz } from '../server/brokerSync.js'
 import { notifyRefresh, checkLocBuys } from '../server/notify.js'
+import { ensureLastMonthSnapshot } from '../server/snapshot.js'
 import { requireUser, HttpError } from '../server/auth.js'
 
 const json = (body, status = 200) =>
@@ -29,6 +31,12 @@ export async function POST(request) {
       }
     }
     const prices = await refreshPrices()
+    let snapshot = null
+    try {
+      snapshot = await ensureLastMonthSnapshot(user.id)
+    } catch (e) {
+      console.error('[api/refresh] snapshot', e)
+    }
     let notified = 0
     try {
       if (body?.sync && (await notifyRefresh(user.id, prices, broker))) notified++
@@ -36,7 +44,7 @@ export async function POST(request) {
     } catch (e) {
       console.error('[api/refresh] notify', e) // 016 미적용·메리츠 조회 실패 등 → 알림만 건너뜀
     }
-    return json({ ...prices, broker, notified })
+    return json({ ...prices, broker, notified, snapshot: snapshot && { date: snapshot.date, saved: snapshot.saved } })
   } catch (e) {
     if (e instanceof HttpError) return json({ error: e.message }, e.status)
     console.error('[api/refresh]', e)
