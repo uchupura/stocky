@@ -1,6 +1,8 @@
 <script setup>
 import { ref, computed, watch, nextTick } from 'vue'
 import AppHeader from './components/AppHeader.vue'
+import NotificationSheet from './components/NotificationSheet.vue'
+import { useNotifications } from './composables/useNotifications'
 import PortfolioSummary from './components/PortfolioSummary.vue'
 import HoldingList from './components/HoldingList.vue'
 import AddHoldingSheet from './components/AddHoldingSheet.vue'
@@ -245,6 +247,16 @@ async function onCash(payload) {
   }
 }
 
+// ===== 알림 (016) — 앱 열 때 · 갱신 뒤에 다시 불러옴 =====
+const noti = useNotifications(computed(() => summary.value?.portfolio_id ?? null))
+const notiOpen = ref(false)
+async function readNoti(id) {
+  try { await noti.read(id) } catch (e) { toast(e.message) }
+}
+async function readAllNoti() {
+  try { await noti.readAll(); notiOpen.value = false } catch (e) { toast(e.message) }
+}
+
 // ===== 현재가 · 환율 갱신 =====
 const refreshError = ref('')
 // 메리츠 계좌 맞춤 결과 → 안내 문구 (바뀐 게 없으면 '')
@@ -259,6 +271,7 @@ async function refresh({ manual = false } = {}) {
   try {
     const r = await refreshPrices({ sync: manual })
     if (!r) return
+    noti.load() // 갱신하며 새 알림(매수 결과 · 새로고침 결과)이 생겼을 수 있음
     const b = r.broker
     const errs = []
     if (r.failed?.length) errs.push(`일부 종목 갱신 실패: ${r.failed.map((f) => f.symbol).join(', ')}`)
@@ -289,14 +302,15 @@ watch(
     if (!uid) return
     loginError.value = ''
     await load()
-    if (!error.value) refresh()
+    if (!error.value) { noti.load(); refresh() }
   },
   { immediate: true },
 )
 </script>
 
 <template>
-  <AppHeader :user-name="session ? displayName : ''" :active-tab="tab === 'profits' ? 'auto' : tab" @logout="onLogout" @navigate="setTab" />
+  <AppHeader :user-name="session ? displayName : ''" :active-tab="tab === 'profits' ? 'auto' : tab" :unread="noti.unread.value" @logout="onLogout" @navigate="setTab" @notifications="notiOpen = true; noti.load()" />
+  <NotificationSheet :open="notiOpen" :items="noti.items.value" :error="noti.error.value" @close="notiOpen = false" @read="readNoti" @read-all="readAllNoti" />
 
   <!-- 로그인 상태 확인 중: 아무것도 그리지 않음 -->
   <template v-if="!ready" />

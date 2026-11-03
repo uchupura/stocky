@@ -23,7 +23,7 @@ async function findVendor(symbol) {
 const round2 = (v) => Math.round(v * 100) / 100
 
 // 미국 동부 시각 기준: 장이 끝난(16:30 이후) 날까지만 종가로 인정
-function lastClosedUsDate(now = new Date()) {
+export function lastClosedUsDate(now = new Date()) {
   const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
     .formatToParts(now).map((x) => [x.type, x.value]))
   const d = new Date(`${p.year}-${p.month}-${p.day}T12:00:00Z`)
