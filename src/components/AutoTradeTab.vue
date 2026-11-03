@@ -261,7 +261,10 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
     <section class="card list-card">
       <div class="list-head">
         <div class="list-title"><h2>오늘 주문<span>{{ rows.length }}</span></h2></div>
-        <div class="list-actions"><span class="hint">모두 LOC · 종가에 체결</span></div>
+        <div class="list-actions">
+          <span class="at-mode" :class="p.orderEnabled ? 'live' : 'dry'">{{ p.orderEnabled ? '🔴 실제 주문 모드' : '시험 모드' }}</span>
+          <span class="hint">모두 LOC · 종가에 체결</span>
+        </div>
       </div>
       <p v-if="p.plan.exhausted" class="at-info">남은 예산으로 1주도 살 수 없어 매수 주문이 없어요 (매도는 계속).</p>
       <div class="ret-table-wrap"><table class="ret-table at-table">
@@ -287,7 +290,8 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
       </table></div>
 
       <button class="primary-btn" :disabled="blocked" @click="confirmOpen = true">주문 넣기{{ p.orderEnabled ? '' : ' (시험 모드)' }}</button>
-      <p v-if="!p.orderEnabled" class="at-info">지금은 시험 모드예요 — 서버 환경변수 LOC_ORDER_ENABLED=1 일 때만 실제 주문이 나가요.</p>
+      <p v-if="p.orderEnabled" class="at-info at-live">실제 주문 모드예요 — [주문 넣기]를 누르면 증권사에 실제 주문이 나가요.</p>
+      <p v-else class="at-info">지금은 시험 모드예요 — 서버 환경변수 LOC_ORDER_ENABLED=1 일 때만 실제 주문이 나가요 (Vercel 은 넣은 뒤 Redeploy 필요).</p>
     </section>
 
     <!-- 최근 거래일 주문 결과 -->

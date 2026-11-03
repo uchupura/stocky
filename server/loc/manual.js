@@ -31,6 +31,9 @@ function lastClosedUsDate(now = new Date()) {
   return d.toISOString().slice(0, 10).replaceAll('-', '')
 }
 
+/** 실제 주문 모드인지 (LOC_ORDER_ENABLED = 1 / true — 앞뒤 공백·따옴표 무시) */
+export const orderEnabled = () => ['1', 'true'].includes(String(process.env.LOC_ORDER_ENABLED || '').trim().replace(/^['"]|['"]$/g, '').toLowerCase())
+
 /** 입력 설정 검사 · 정리 */
 export function normalize(s = {}) {
   const symbol = String(s.symbol || '').trim().toUpperCase()
@@ -164,7 +167,7 @@ export async function submitPlan(settings, signature) {
   if (p.plan.sell) list.push({ tag: 'sell', side: 'sell', ...p.plan.sell })
   for (const b of p.plan.buys) for (const st of b.steps) list.push({ tag: b.tag, side: 'buy', price: st.price, qty: st.qty })
 
-  const dryRun = process.env.LOC_ORDER_ENABLED !== '1'
+  const dryRun = !orderEnabled()
   if (dryRun) return { dryRun: true, list, preview: p }
 
   const sent = []

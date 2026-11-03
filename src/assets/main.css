@@ -947,3 +947,8 @@ div.ret-row:hover { background: none; }
 .ph-daily { padding: 0 4px 12px; }
 .ph-row .dep-account, .ph-row .dep-memo { white-space: normal; overflow: visible; }
 @media (max-width: 639px) { .ph-period { display: block; margin-left: 0; margin-top: 2px; } }
+/* 자동매매 — 주문 모드 표시 */
+.at-mode { font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: 999px; white-space: nowrap; }
+.at-mode.live { color: var(--up); background: color-mix(in srgb, var(--up) 12%, transparent); }
+.at-mode.dry { color: var(--sub); background: var(--bg); }
+.at-live { color: var(--up); font-weight: 600; }
