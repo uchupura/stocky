@@ -202,13 +202,23 @@ a { color: inherit; text-decoration: none; }
 .handle:focus-visible { outline: 2px solid var(--blue); }
 .dragging .handle { color: var(--blue); cursor: grabbing; }
 
-.foot {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 16px 8px 0;
-  font-size: 12px;
-  color: var(--sub);
+/* 내 투자 위쪽 — 환율·갱신 시각 + 새로고침 버튼 */
+.refresh-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.refresh-info { flex: 1; min-width: 0; font-size: 13px; color: var(--sub); line-height: 1.45; }
+.refresh-error { display: block; color: var(--up); }
+.refresh-btn {
+  flex: none; display: inline-flex; align-items: center; gap: 6px;
+  height: 36px; padding: 0 14px 0 12px; border-radius: 18px;
+  background: var(--card); color: var(--text); font-size: 14px; font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 29, 58, 0.06);
 }
-.foot button { font-size: 12px; color: var(--sub); text-decoration: underline; }
+.refresh-btn svg { color: var(--blue); }
+.refresh-btn:hover:not(:disabled) { background: var(--press); }
+.refresh-btn:active:not(:disabled) { transform: scale(0.97); }
+.refresh-btn:disabled { color: var(--sub); cursor: default; }
+.refresh-btn.spinning svg { animation: refresh-spin 0.9s linear infinite; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .refresh-btn.spinning svg { animation: none; } }
 
 /* 토스트 */
 .toast {
@@ -337,8 +347,6 @@ a { color: inherit; text-decoration: none; }
   .amount .pl { text-align: right; margin-top: 0; font-size: 15px; font-weight: 600; }
   .amount .rate { display: block; font-size: 13px; font-weight: 500; margin-top: 2px; }
 
-  .foot { padding: 20px 8px 0; font-size: 13px; }
-  .foot button { font-size: 13px; }
 }
 
 /* ===== 로딩 / 에러 상태 ===== */
@@ -549,8 +557,6 @@ body.sheet-open { overflow: hidden; }
 .item.editable { cursor: pointer; }
 .item.editable:hover { background: var(--press); }
 .item.editable:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
-.foot-error { display: block; color: var(--up); margin-top: 2px; }
-.foot button:disabled { opacity: 0.5; }
 @media (min-width: 1024px) { .pl-local { font-size: 13px; } }
 /* 모바일: "환율 미입력" 글자 대신 작은 주황 점 (종목 이름 칸 확보) */
 @media (max-width: 639px) {

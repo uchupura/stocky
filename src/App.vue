@@ -287,11 +287,19 @@ async function refresh({ manual = false } = {}) {
     refreshError.value = '현재가를 갱신하지 못했어요. 저장된 값으로 보여드려요.'
   }
 }
+// [새로고침] 버튼 — 누른 순간부터 끝날 때까지 아이콘이 돎, 화면은 그대로 두고 뒤에서 불러옴
+const reloading = ref(false)
 async function reloadAll() {
-  await load()
-  if (error.value) return
-  await refresh({ manual: true })
-  if (view.value === 'quote') loadCharts(holdings.value, { force: true })
+  if (reloading.value) return
+  reloading.value = true
+  try {
+    await load({ silent: true })
+    if (error.value) return
+    await refresh({ manual: true })
+    if (view.value === 'quote') loadCharts(holdings.value, { force: true })
+  } finally {
+    reloading.value = false
+  }
 }
 
 // 로그인되면: 저장된 값으로 바로 보여주고 → 뒤에서 현재가·환율 갱신
@@ -398,6 +406,18 @@ watch(
 
     <!-- 정상 -->
     <template v-else>
+      <!-- 현재가·환율 갱신 + 메리츠 계좌 맞춤 (위쪽에 두어 바로 누를 수 있게) -->
+      <div class="refresh-bar">
+        <p class="refresh-info" aria-live="polite">
+          <template v-if="refreshing || reloading">현재가·환율 갱신 중…</template>
+          <template v-else-if="usdRate">1달러 = {{ fxText(usdRate) }}원<template v-if="fxUpdatedAt"> · {{ timeText(fxUpdatedAt) }} 기준</template></template>
+          <span v-if="refreshError" class="refresh-error">{{ refreshError }}</span>
+        </p>
+        <button type="button" class="refresh-btn" :class="{ spinning: refreshing || reloading }" :disabled="refreshing || reloading" @click="reloadAll">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" /></svg>
+          새로고침
+        </button>
+      </div>
       <AccountBar
         v-model="acct"
         :accounts="accounts"
@@ -471,16 +491,6 @@ watch(
         </p>
       </section>
 
-      <div class="foot">
-        <span>
-          <template v-if="refreshing">현재가·환율 갱신 중…</template>
-          <template v-else-if="usdRate">
-            ※ 1달러 = {{ fxText(usdRate) }}원<template v-if="fxUpdatedAt"> · {{ timeText(fxUpdatedAt) }} 기준</template>
-          </template>
-          <span v-if="refreshError" class="foot-error">{{ refreshError }}</span>
-        </span>
-        <button :disabled="refreshing" @click="reloadAll">새로고침</button>
-      </div>
     </template>
     </template>
   </main>
