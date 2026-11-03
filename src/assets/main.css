@@ -952,3 +952,8 @@ div.ret-row:hover { background: none; }
 .at-mode.live { color: var(--up); background: color-mix(in srgb, var(--up) 12%, transparent); }
 .at-mode.dry { color: var(--sub); background: var(--bg); }
 .at-live { color: var(--up); font-weight: 600; }
+/* 배당 → 예수금 반영 체크 */
+.cash-check { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.cash-check input { width: 18px; height: 18px; margin-top: 1px; accent-color: var(--blue); flex: 0 0 auto; }
+.cash-check small { display: block; font-size: 12px; font-weight: 500; color: var(--sub); margin-top: 2px; }
+.cash-note { margin-top: -6px; }

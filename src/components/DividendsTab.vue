@@ -52,9 +52,10 @@ async function onSubmit(p) {
   saving.value = true
   sheetError.value = ''
   try {
-    await saveDividend(p)
+    const r = await saveDividend(p)
     sheetOpen.value = false
-    emit('toast', p.id ? '배당 내역을 수정했어요' : `${p.stock_name} 배당을 기록했어요`)
+    const base = p.id ? '배당 내역을 수정했어요' : `${p.stock_name} 배당을 기록했어요`
+    emit('toast', r.clamped ? `${base} · 예수금이 모자라 0원으로 맞췄어요` : r.cashChanged ? `${base} · ${p.id ? '예수금도 함께 고쳤어요' : '예수금에 반영했어요'}` : base)
   } catch (e) {
     sheetError.value = e.message
   } finally {
@@ -64,9 +65,9 @@ async function onSubmit(p) {
 async function onDelete(d) {
   saving.value = true
   try {
-    await removeDividend(d.id)
+    const r = await removeDividend(d.id)
     sheetOpen.value = false
-    emit('toast', '배당 내역을 삭제했어요')
+    emit('toast', r.clamped ? '배당 내역을 삭제했어요 · 예수금이 모자라 0원으로 맞췄어요' : r.cashChanged ? '배당 내역을 삭제하고 예수금에서 뺐어요' : '배당 내역을 삭제했어요')
   } catch (e) {
     sheetError.value = e.message
   } finally {

@@ -30,7 +30,7 @@ const confirmDelete = ref(false)
 const newAccount = ref({ open: false, name: '', error: '', saving: false })
 
 function blank() {
-  return { amount: '', account_id: null, pay_date: todayKST(), fx_rate: '', memo: '' }
+  return { amount: '', account_id: null, pay_date: todayKST(), fx_rate: '', memo: '', applyCash: true }
 }
 
 let opening = false // 창을 여는 동안 지급일이 채워지는 것은 "변경"으로 보지 않음
@@ -41,7 +41,7 @@ watch(() => props.open, (o) => {
   const d = props.dividend
   stock.value = d ? { symbol: d.symbol, market: d.market, name: d.stock_name } : null
   form.value = d
-    ? { amount: String(d.amount), account_id: d.account_id, pay_date: d.pay_date, fx_rate: d.market === 'US' ? String(d.fx_rate) : '', memo: d.memo || '' }
+    ? { amount: String(d.amount), account_id: d.account_id, pay_date: d.pay_date, fx_rate: d.market === 'US' ? String(d.fx_rate) : '', memo: d.memo || '', applyCash: !!d.cash_applied }
     : { ...blank(), account_id: props.defaultAccountId ?? props.accounts[0]?.id ?? null }
   fx.value = d && d.market === 'US' ? { status: 'ok', date: d.fx_date, rate: d.fx_rate, kept: true } : { status: 'idle' }
   query.value = ''
@@ -160,8 +160,16 @@ function submit() {
     account_id: form.value.account_id,
     pay_date: form.value.pay_date,
     memo: form.value.memo,
+    applyCash: form.value.applyCash,
   })
 }
+// 예수금 반영 안내: 계좌 · 통화 · 금액
+const cashLabel = computed(() => {
+  const acc = props.accounts.find((a) => a.id === form.value.account_id)?.name || '고른 계좌'
+  const a = num(form.value.amount)
+  const money = !(a > 0) ? '' : isUS.value ? ` ${usdText(a)}` : ` ${fmt(a)}원`
+  return `${acc} ${isUS.value ? '달러' : '원화'} 예수금에${money} 더하기`
+})
 function onDelete() {
   if (!confirmDelete.value) { confirmDelete.value = true; return }
   emit('delete', props.dividend)
@@ -255,6 +263,13 @@ function onDelete() {
         <span class="field-label">메모 <span class="field-hint">선택 · 100자까지</span></span>
         <div class="field-input"><input v-model="form.memo" maxlength="100" placeholder="예: 3분기 배당" autocomplete="off"></div>
       </label>
+
+      <label class="cash-check">
+        <input v-model="form.applyCash" type="checkbox">
+        <span>예수금에도 반영 <small>{{ cashLabel }}</small></span>
+      </label>
+      <p v-if="dividend?.cash_applied && !form.applyCash" class="field-hint cash-note">끄고 저장하면 예전에 더했던 금액을 예수금에서 빼요.</p>
+      <p v-else-if="dividend?.cash_applied" class="field-hint cash-note">수정하면 예전 금액을 빼고 새 금액으로 다시 반영해요.</p>
 
       <p v-if="krwPreview !== null" class="preview">
         {{ isUS ? '원화 환산' : '배당금' }} <b>{{ fmt(krwPreview) }}원</b>
