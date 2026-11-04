@@ -32,8 +32,12 @@ export const timeText = (iso) => {
 }
 
 // 주식 수: 정수면 그대로, 소수점 주식이면 최대 6자리
-export const qtyText = (q) =>
-  `${Number(q).toLocaleString('ko-KR', { maximumFractionDigits: 6 })}주`
+// 수량: 소수점 주식은 둘째 자리까지만 보여줌 (저장 값은 그대로 — 수정 창에는 전체 자릿수)
+export const qtyText = (q) => {
+  const n = Number(q)
+  if (n > 0 && n < 0.005) return '0.01주 미만'
+  return `${n.toLocaleString('ko-KR', { maximumFractionDigits: 2 })}주`
+}
 
 // 수익률(비율 0.0123 → "+1.23%"), 계산 불가(null)면 "–"
 export const pctText = (r, digits = 2) => {
