@@ -201,6 +201,22 @@ async function allPages(path, params, label) {
 }
 
 /**
+ * 같은 종목 여러 줄 → 한 줄 (예: 해외 잔고는 '일반' 26주 + '소수점' 0.730429주를 따로 줌)
+ *   수량 = 합계, 평균 단가 = 수량 비율로 섞은 값
+ */
+export function mergeRows(rows) {
+  const by = new Map()
+  for (const r of rows) {
+    const m = by.get(r.symbol)
+    if (!m) { by.set(r.symbol, { ...r }); continue }
+    const qty = m.qty + r.qty
+    m.avg = qty > 0 ? (m.qty * m.avg + r.qty * r.avg) / qty : m.avg
+    m.qty = qty
+  }
+  return [...by.values()]
+}
+
+/**
  * 계좌 전체 (조회만) — 하나라도 실패하면 MeritzError (중간 결과로 맞추지 않게)
  *   kr  : 국내 잔고 [{ symbol, name, qty, avg }]  (국내 잔고 API 는 해외 종목도 같이 줌 → 코드에 '.' 있는 줄은 뺌)
  *   us  : 해외 잔고 [{ symbol, name, qty, avg, vendor }]
@@ -208,12 +224,12 @@ async function allPages(path, params, label) {
  *   usd : 달러 예수금 — 결제 전 매수 금액까지 뺀 값 (estm_frcr_amt)
  */
 export async function account() {
-  const kr = (await allPages('/accounts/v1/me/holdings', {}, '국내 잔고'))
+  const kr = mergeRows((await allPages('/accounts/v1/me/holdings', {}, '국내 잔고'))
     .filter((h) => h.iscd && !h.iscd.includes('.') && Number(h.rmnd_qty) > 0)
-    .map((h) => ({ symbol: h.iscd.replace(/^A/, ''), name: h.isnm, qty: Number(h.rmnd_qty), avg: Number(h.byng_unpr) }))
-  const us = (await allPages('/accounts/v1/me/overseas/holdings', {}, '해외 잔고'))
+    .map((h) => ({ symbol: h.iscd.replace(/^A/, ''), name: h.isnm, qty: Number(h.rmnd_qty), avg: Number(h.byng_unpr) })))
+  const us = mergeRows((await allPages('/accounts/v1/me/overseas/holdings', {}, '해외 잔고'))
     .filter((h) => Number(h.rmnd_dqty) > 0)
-    .map((h) => ({ symbol: h.ovrs_stck_symb_iscd, name: h.isnm, qty: Number(h.rmnd_dqty), avg: Number(h.avrg_unpr), vendor: h.ovrs_exch_vndr_idno }))
+    .map((h) => ({ symbol: h.ovrs_stck_symb_iscd, name: h.isnm, qty: Number(h.rmnd_dqty), avg: Number(h.avrg_unpr), vendor: h.ovrs_exch_vndr_idno })))
   const dep = first((await request('GET', '/accounts/v1/me/deposit')).data)
   if (dep.tfam == null) throw new MeritzError('원화 예수금을 불러오지 못했어요.')
   const cur = await request('GET', '/accounts/v1/me/overseas/currencies')

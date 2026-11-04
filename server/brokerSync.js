@@ -8,11 +8,12 @@
 //   증권사 조회가 하나라도 실패하면 아무것도 바꾸지 않음 (meritz.account() 가 먼저 다 받아 옴)
 // =====================================================================
 import { adminDb, getQuote } from './kis.js'
-import { account as meritzAccount } from './meritz.js'
+import { account as meritzAccount, mergeRows } from './meritz.js'
 
 // 메리츠 거래소 코드 → stocky 거래소
 const EXCHANGE_OF = { '0066': 'AMS', '0537': 'NAS', '0321': 'NYS' }
-const r4 = (v) => Math.round(Number(v) * 10000) / 10000
+const r4 = (v) => Math.round(Number(v) * 10000) / 10000     // 평균 단가 (DB 소수점 4자리)
+const r6 = (v) => Math.round(Number(v) * 1000000) / 1000000 // 수량 (DB 소수점 6자리 — 소수점 주식)
 const r2 = (v) => Math.round(Number(v) * 100) / 100
 
 /** 연결된 계좌 (로그인한 사람 포트폴리오 것일 때만) → { accountId, portfolioId } | null */
@@ -39,21 +40,22 @@ export async function planSync({ portfolioId, accountId }, broker) {
   ])
   for (const r of [h, c]) if (r.error) throw r.error
 
-  const want = [
-    ...broker.kr.map((x) => ({ ...x, market: 'KR' })),
-    ...broker.us.map((x) => ({ ...x, market: 'US' })),
-  ]
   const key = (market, symbol) => `${market}:${symbol}`
+  // 같은 종목이 여러 줄로 와도 한 줄로 (같은 계좌·종목은 stocky 에 한 줄만 — 두 번 추가하면 중복 오류)
+  const want = [
+    ...mergeRows(broker.kr).map((x) => ({ ...x, market: 'KR' })),
+    ...mergeRows(broker.us).map((x) => ({ ...x, market: 'US' })),
+  ]
   const mine = new Map(h.data.map((x) => [key(x.stocks.market, x.stocks.symbol), x]))
   const add = []
   const update = []
   for (const w of want) {
     const cur = mine.get(key(w.market, w.symbol))
     mine.delete(key(w.market, w.symbol))
-    const qty = r4(w.qty)
+    const qty = r6(w.qty)
     const avg = r4(w.avg)
     if (!cur) { add.push({ ...w, qty, avg }); continue }
-    if (r4(cur.quantity) !== qty || r4(cur.avg_price) !== avg) {
+    if (r6(cur.quantity) !== qty || r4(cur.avg_price) !== avg) {
       update.push({ id: cur.id, symbol: w.symbol, name: cur.stocks.name, market: w.market, from: { qty: Number(cur.quantity), avg: Number(cur.avg_price) }, to: { qty, avg } })
     }
   }
