@@ -90,6 +90,10 @@ export async function buildPlan(settings) {
   const netQty = used.reduce((t, f) => t + (f.side === 'buy' ? f.qty : -f.qty), 0)
   const warnings = []
   if (netQty !== (h?.qty || 0)) warnings.push(`증권사 보유 ${h?.qty || 0}주와 체결 내역 합계 ${netQty}주가 달라요. 시작일·제외 주문번호를 확인해 주세요.`)
+  // 안전장치: 체결이 있었던 날(장 마감된 날)의 종가를 못 받으면 신저가가 틀릴 수 있음 → 주문 안 보냄
+  const closeDates = new Set(closes.map((c) => c.date))
+  const noClose = [...new Set(used.map((f) => f.date))].filter((dt) => dt <= closedTo && !closeDates.has(dt)).sort()
+  if (noClose.length) warnings.push(`${noClose.map((dt) => `${dt.slice(4, 6)}/${dt.slice(6, 8)}`).join(', ')} 종가를 증권사에서 받지 못했어요. 신저가가 틀릴 수 있어 주문을 보내지 않아요. 잠시 뒤 다시 [계산]해 주세요.`)
   const orders = await todayOrders(s.symbol)
   const live = orders.filter((o) => o.open > 0 && !o.rejected && o.origNo === '0')
 

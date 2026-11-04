@@ -73,7 +73,11 @@ export async function quote(symbol, market) {
   return { price: Number(q.prpr), prevClose: Number(q.prdy_clpr), name: q.kor_isnm || q.eng_isnm || symbol }
 }
 
-/** 일봉 종가 [{ date, close }] (from~to, YYYYMMDD) — 기간을 2주씩 나눠 조회 */
+/**
+ * 일봉 종가 [{ date, close }] (from~to, YYYYMMDD) — 기간을 2주씩 나눠 조회
+ *   이 API 는 기간에 증권사 기준 '오늘'이 들어가면 첫날을 빼고 줄 때가 있음 (11/02 종가 빠짐)
+ *   → 묶음마다 하루 앞에서 시작해 앞 묶음과 하루씩 겹치게 (빠지는 첫날은 이미 받은 날)
+ */
 export async function dailyCloses(symbol, market, from, to) {
   const out = new Map()
   const d = (s) => new Date(`${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}T12:00:00Z`)
@@ -81,7 +85,8 @@ export async function dailyCloses(symbol, market, from, to) {
   for (let a = d(from); a <= d(to); a.setUTCDate(a.getUTCDate() + 14)) {
     const b = new Date(a); b.setUTCDate(b.getUTCDate() + 13)
     const end = b > d(to) ? to : ymd(b)
-    const r = await request('GET', '/market/v1/overseas/candles/days', { mrkt_div_code: 'OV', mrkt_cls_code: market, iscd: symbol, dely_rltm_cls_code: '0', mod_stpr_cls_code: '1', from: ymd(a), to: end })
+    const start = new Date(a); start.setUTCDate(start.getUTCDate() - 1) // 하루 겹침
+    const r = await request('GET', '/market/v1/overseas/candles/days', { mrkt_div_code: 'OV', mrkt_cls_code: market, iscd: symbol, dely_rltm_cls_code: '0', mod_stpr_cls_code: '1', from: ymd(start), to: end })
     for (const x of Array.isArray(r.data) ? r.data : []) if (x.date >= from && x.date <= to) out.set(x.date, Number(x.prpr))
   }
   return [...out].sort(([a], [b]) => a.localeCompare(b)).map(([date, close]) => ({ date, close }))
