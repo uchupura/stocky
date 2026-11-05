@@ -96,7 +96,7 @@ const result = ref(null)
 async function send() {
   sending.value = true
   try {
-    result.value = await locSubmit(p.value.cycleId, p.value.signature)
+    result.value = await locSubmit(p.value.cycleId, p.value.signature, p.value.calcPrice)
     confirmOpen.value = false
     emit('toast', result.value.dryRun ? '시험 모드 — 주문은 보내지 않았어요' : result.value.complete ? `주문 ${result.value.sent.length}건을 넣었어요` : '일부 주문에 문제가 있어요. 결과를 확인해 주세요')
     if (!result.value.dryRun) await calc({ keepResult: true }) // 오늘 걸린 주문 다시 반영 (결과 표는 유지)

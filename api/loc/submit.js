@@ -1,5 +1,6 @@
 // POST /api/loc/submit — 오늘 LOC 주문 전송
-//   본문: { cycleId, signature } — DB 사이클 설정으로 서버가 다시 계산해 화면에서 본 것(signature)과 같을 때만 전송
+//   본문: { cycleId, signature, refPrice } — DB 사이클 설정으로 서버가 다시 계산해 화면에서 본 것(signature)과 같을 때만 전송
+//         refPrice: [계산] 때 현재가 — 지금 현재가와 2% 안이면 그 값으로 다시 계산 (현재가가 조금 움직여도 같은 주문)
 //   진행 중 사이클만, LOC_ORDER_ENABLED=1 이 아니면 시험 모드(보낼 목록만 돌려줌)
 import { requireUser, HttpError } from '../../server/auth.js'
 import { normalize, submitPlan } from '../../server/loc/manual.js'
@@ -18,7 +19,7 @@ export async function POST(request) {
     if (errors.length) return json({ error: errors.join(' · ') }, 400)
     if (typeof body.signature !== 'string') return json({ error: '먼저 [계산]으로 주문을 확인해 주세요.' }, 400)
     console.log('[loc] 전송 요청', user.email?.replace(/(.).+@/, '$1***@'), settings.symbol, `cycle#${cycle.id}`)
-    const r = await submitPlan(settings, body.signature)
+    const r = await submitPlan(settings, body.signature, { refPrice: body.refPrice })
     if (r.changed) return json({ error: '그사이 설정이나 가격이 바뀌어 주문이 달라졌어요. 새 주문을 확인한 뒤 다시 눌러 주세요.', preview: { ...r.preview, cycleId: cycle.id } }, 409)
     return json(r)
   } catch (e) {

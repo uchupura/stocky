@@ -66,8 +66,16 @@ export function normalize(s = {}) {
   return { settings: out, errors: err }
 }
 
-/** 오늘 주문 계산 (주문 없음) */
-export async function buildPlan(settings) {
+// [주문 넣기] 때 현재가가 [계산] 때 값에서 이만큼 안이면 그 값을 그대로 써서 같은 주문을 보냄
+//   (① 평단 주문 가격 = min(평단, 현재가×1.2) 라 현재가가 1센트만 움직여도 주문이 달라짐)
+//   2% 움직여도 매수 상한은 지금 현재가 대비 약 22% — 증권사 30% 제한 안쪽
+export const REF_PRICE_TOLERANCE = 0.02
+
+/**
+ * 오늘 주문 계산 (주문 없음)
+ * @param refPrice [계산] 때 쓴 현재가 — 지금 현재가와 2% 안이면 이 값으로 계산 (같은 주문이 나오게)
+ */
+export async function buildPlan(settings, { refPrice = null } = {}) {
   const s = settings
   const h = await holding(s.symbol)
   const vendor = h?.vendor || (await findVendor(s.symbol))
@@ -75,6 +83,8 @@ export async function buildPlan(settings) {
   if (!market) throw new Error(`${s.symbol} 시세를 찾지 못했어요. 종목(ticker)을 확인해 주세요.`)
 
   const q = await quote(s.symbol, market)
+  const ref = Number(refPrice)
+  const calcPrice = ref > 0 && Math.abs(q.price - ref) / q.price <= REF_PRICE_TOLERANCE ? ref : q.price // 주문 계산에 쓸 현재가
   const closedTo = lastClosedUsDate()
   const closes = closedTo >= s.startDate ? await dailyCloses(s.symbol, market, s.startDate, closedTo) : []
   const allFills = await fills(s.symbol, s.startDate)
@@ -99,7 +109,7 @@ export async function buildPlan(settings) {
 
   const state = {
     dailyAmount: s.dailyAmount, remaining, holdQty: h?.qty || 0, avg: h?.qty ? h.avg : null,
-    low, prevClose: q.prevClose, current: q.price,
+    low, prevClose: q.prevClose, current: calcPrice,
   }
   // 사이클 종료: 시작일 이후 매도 체결이 있고 보유가 0주 (전량 매도) → 주문 계산 안 함
   const sells = used.filter((f) => f.side === 'sell')
@@ -152,7 +162,7 @@ export async function buildPlan(settings) {
   // 서버가 다시 계산했을 때 같은 주문인지 확인하는 서명
   const signature = JSON.stringify([plan.sell, plan.buys.map((b) => b.steps)])
   return {
-    symbol: s.symbol, name: q.name, vendor, market, dailyAmount: s.dailyAmount,
+    symbol: s.symbol, name: q.name, vendor, market, dailyAmount: s.dailyAmount, calcPrice,
     holding: { qty: h?.qty || 0, avg: h?.avg ?? null },
     price: q.price, prevClose: q.prevClose,
     budget, spent, remaining, buyDays: new Set(buys.map((f) => f.date)).size,
@@ -166,8 +176,8 @@ export async function buildPlan(settings) {
  * 오늘 주문 전송 — 서버에서 다시 계산한 주문이 화면에서 본 것과 같을 때만
  * @returns {{ dryRun, sent: [], statuses: [] }}
  */
-export async function submitPlan(settings, signature) {
-  const p = await buildPlan(settings)
+export async function submitPlan(settings, signature, { refPrice = null } = {}) {
+  const p = await buildPlan(settings, { refPrice })
   if (signature !== p.signature) return { changed: true, preview: p }
   if (p.ended) throw new Error('이 사이클은 전량 매도로 끝났어요. 새 사이클을 시작해 주세요.')
   if (p.warnings.length) throw new Error(`주문을 보내지 않았어요 — ${p.warnings.join(' ')}`)

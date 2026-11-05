@@ -59,6 +59,7 @@ export function locPreview(cycleId) {
 }
 
 /** 오늘 LOC 주문 전송 — 409 면 error.data.preview 에 새 계산 결과 */
-export function locSubmit(cycleId, signature) {
-  return postJson('/api/loc/submit', { cycleId, signature }, '주문을 보내지 못했어요.')
+// refPrice: [계산] 때 현재가 — 서버가 2% 안이면 그 값으로 다시 계산해 같은 주문을 보냄
+export function locSubmit(cycleId, signature, refPrice) {
+  return postJson('/api/loc/submit', { cycleId, signature, refPrice }, '주문을 보내지 못했어요.')
 }

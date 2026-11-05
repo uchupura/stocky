@@ -56,13 +56,16 @@ async function runCycle(cycle, { send }) {
   }
 
   // 전송 — 계산과 전송 사이에 현재가가 바뀌면(서명 불일치) 새 값으로 한 번 더
+  // [계산] 때 현재가를 함께 넘겨 현재가가 조금 움직여도 같은 주문 — 크게 움직였으면 새 값으로 한 번 더
   let signature = p.signature
+  let refPrice = p.calcPrice
   let r
   try {
     for (let i = 0; i < 2; i++) {
-      r = await submitPlan(settings, signature)
+      r = await submitPlan(settings, signature, { refPrice })
       if (!r.changed) break
       signature = r.preview.signature
+      refPrice = r.preview.calcPrice
     }
   } catch (e) {
     return { result: 'blocked', title: `${cycle.symbol} 자동 주문 안 보냄`, body: e.message }
