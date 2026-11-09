@@ -129,7 +129,9 @@ const hiddenCount = computed(() => (p.value?.lastOrders || []).length - lastShow
 
 // 날짜별 내역: 계산했으면 그 결과, 아니면 DB 에 저장된 내역
 const hist = computed(() => (p.value ? p.value.history : lc.daily.value) || [])
-const histLow = computed(() => { if (isLoop.value) return null; const c = hist.value.map((x) => x.close).filter((v) => v > 0); return c.length ? Math.min(...c) : null })
+const histLow = computed(() => { const c = hist.value.map((x) => x.close).filter((v) => v > 0); return c.length ? Math.min(...c) : null })
+// 합친 방식: 지금 신저가 묶음(다음에 팔 묶음)을 산 날 — [계산] 뒤에만 알 수 있음
+const nextLotDate = computed(() => p.value?.loop?.lots.find((l) => l.next)?.date || null)
 // 저장된 내역으로 바로 보여주는 요약 (계산 전)
 const savedSum = computed(() => {
   const d = lc.daily.value
@@ -387,8 +389,8 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
     <div class="ret-table-wrap"><table class="ret-table at-table">
       <thead><tr><th scope="col">날짜</th><th scope="col">종가</th><th scope="col">매수</th><th scope="col">매수 금액</th><th scope="col">매도</th><th scope="col">누적 보유</th><th scope="col">누적 쓴 금액</th></tr></thead>
       <tbody>
-        <tr v-for="e in hist" :key="e.date" :class="{ 'at-low': e.close === histLow }">
-          <th scope="row">{{ ymd(e.date) }}</th>
+        <tr v-for="e in hist" :key="e.date" :class="{ 'at-low': e.close === histLow || e.date === nextLotDate }">
+          <th scope="row">{{ e.date === nextLotDate ? '★ ' : '' }}{{ ymd(e.date) }}</th>
           <td>{{ usd(e.close) }}{{ e.close === histLow ? ' ⬇' : '' }}</td>
           <td>{{ e.buyQty ? `${e.buyQty}주` : '–' }}</td><td>{{ e.buyQty ? usd(e.buyAmount) : '' }}</td>
           <td>{{ e.sellQty ? `${e.sellQty}주 ${usd(e.sellAmount)}` : '–' }}<small v-if="e.sellPnl !== undefined" class="up"> {{ signed(e.sellPnl) }} ({{ e.sellPct > 0 ? '+' : '' }}{{ e.sellPct }}%)</small><small v-if="e.withdraw" class="at-sub"> · 인출 {{ usd(e.withdraw) }}</small></td>
@@ -396,7 +398,7 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
         </tr>
       </tbody>
     </table></div>
-    <p class="at-info">{{ isLoop ? '매도 옆 = 판 묶음 수익 · 수익률' : '⬇ = 사이클 신저가' }} · 제외한 거래는 빠져 있어요</p>
+    <p class="at-info">⬇ = 시작일부터 최저 종가{{ isLoop ? ' · ★ = 지금 신저가 묶음(다음에 팔 묶음)을 산 날 · 매도 옆 = 판 묶음 수익 · 수익률' : ' (사이클 신저가)' }} · 제외한 거래는 빠져 있어요</p>
   </section>
 
 
