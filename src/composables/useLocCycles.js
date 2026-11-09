@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 function friendly(e, fallback) {
   if (e?.code === '23505') return '진행 중인 사이클이 이미 있어요.'
   if (e?.code === '23514') return '입력값을 다시 확인해 주세요.'
+  if (/strategy|lot_sell_pct|withdraw_pct/.test(e?.message || '')) return '합친 방식을 쓰려면 018_loc_strategy.sql 을 먼저 실행해 주세요.'
   if (e?.code === '42P01' || /loc_cycles|loc_daily/.test(e?.message || '')) return '자동매매 설정을 쓰려면 014_loc_cycles.sql 을 먼저 실행해 주세요.'
   return e?.message || fallback
 }
@@ -19,12 +20,22 @@ export function toRow(form, portfolioId) {
     start_date: form.startDate,
     sell_pct: Number(form.sellPct),
     exclude_order_nos: [...new Set(String(form.exclude || '').split(/[\s,]+/).map((x) => x.trim()).filter(Boolean))],
+    // 018 칸 — DB 에 칸이 있거나(hasStrategy) 합친 방식을 골랐을 때만 (018 적용 전에도 B 방식 저장이 되게)
+    ...(form.hasStrategy || form.strategy === 'loop' ? {
+      strategy: form.strategy === 'loop' ? 'loop' : 'b',
+      lot_sell_pct: Number(form.lotSellPct ?? 5),
+      withdraw_pct: Number(form.withdrawPct ?? 50),
+    } : {}),
   }
 }
 /** DB 행 → 화면 입력 */
 export const toForm = (c) => ({
   symbol: c.symbol, budget: String(Number(c.budget)), splits: c.splits, startDate: c.start_date,
   sellPct: Number(c.sell_pct), exclude: (c.exclude_order_nos || []).join(', '),
+  hasStrategy: 'strategy' in c,
+  strategy: c.strategy === 'loop' ? 'loop' : 'b',
+  lotSellPct: c.lot_sell_pct == null ? 5 : Number(c.lot_sell_pct),
+  withdrawPct: c.withdraw_pct == null ? 50 : Number(c.withdraw_pct),
 })
 
 export function useLocCycles(portfolioId) {

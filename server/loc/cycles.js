@@ -28,6 +28,10 @@ export const settingsOf = (c) => ({
   splits: c.splits,
   startDate: ymd(c.start_date),
   sellPct: Number(c.sell_pct),
+  // 018: 방식 (018 적용 전이면 칸이 없어서 B)
+  strategy: c.strategy === 'loop' ? 'loop' : 'b',
+  lotSellPct: c.lot_sell_pct == null ? 5 : Number(c.lot_sell_pct),
+  withdrawPct: c.withdraw_pct == null ? 50 : Number(c.withdraw_pct),
   exclude: (c.exclude_order_nos || []).join(','),
 })
 

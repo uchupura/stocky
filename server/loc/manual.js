@@ -7,8 +7,11 @@
 //     쓴 금액 · 남은 예산      ← 시작일 이후 매수 체결 합계 (제외 주문 빼고), 총 예산 = 하루 투자금 × 분할 횟수
 //     신저가                  ← 시작일 이후 일봉 종가 최저 (장이 끝난 날만)
 //     현재가 · 전일 종가       ← 시세 (현재가는 매수 LOC 상한에만)
+//   합친 방식(strategy 'loop'): 체결 내역 → 묶음(lots.js) · 매도 = 가장 싼 묶음 ×(1+묶음 매도%) 그 수량
+//     신저가 = 가장 싼 묶음 매수가 · 남은 예산 = 총 예산 − 산 금액 + 판 금액 − 인출 · 사이클 종료 없음
 // =====================================================================
-import { planDay, settleDay } from './engine.js'
+import { planDay, planLoopDay, settleDay, filledQty } from './engine.js'
+import { buildLots } from './lots.js'
 import { holding, quote, dailyCloses, fills, todayOrders, placeLoc, ordersOn, MARKET_OF } from '../meritz.js'
 
 const VENDOR_OF = Object.fromEntries(Object.entries(MARKET_OF).map(([v, m]) => [m, v]))
@@ -55,6 +58,9 @@ export function normalize(s = {}) {
     splits,
     startDate: String(s.startDate || '').replaceAll('-', ''),
     sellPct: Number(s.sellPct ?? 10),
+    strategy: s.strategy === 'loop' ? 'loop' : 'b',
+    lotSellPct: Number(s.lotSellPct ?? 5),
+    withdrawPct: Number(s.withdrawPct ?? 50),
     exclude: [...new Set(String(s.exclude || '').split(/[\s,]+/).map((x) => x.trim()).filter(Boolean))],
   }
   const err = []
@@ -63,6 +69,8 @@ export function normalize(s = {}) {
   if (!(out.splits > 0)) err.push('분할 횟수를 확인해 주세요')
   if (!/^\d{8}$/.test(out.startDate)) err.push('사이클 시작일을 확인해 주세요')
   if (!(out.sellPct > 0 && out.sellPct < 100)) err.push('매도 기준(%)을 확인해 주세요')
+  if (!(out.lotSellPct > 0 && out.lotSellPct < 100)) err.push('묶음 매도 기준(%)을 확인해 주세요')
+  if (!(out.withdrawPct >= 0 && out.withdrawPct <= 100)) err.push('인출 비율(%)을 확인해 주세요')
   return { settings: out, errors: err }
 }
 
@@ -93,9 +101,14 @@ export async function buildPlan(settings, { refPrice = null } = {}) {
   const buys = used.filter((f) => f.side === 'buy')
   const spent = round2(buys.reduce((t, f) => t + f.amount, 0))
   const budget = s.budget
-  const remaining = round2(budget - spent)
-  const low = closes.length ? Math.min(...closes.map((c) => c.close)) : null
-  const lowDate = low === null ? null : closes.find((c) => c.close === low).date
+  const loop = s.strategy === 'loop'
+  const lotInfo = loop ? buildLots(used, { withdrawPct: s.withdrawPct }) : null
+  // 남은 예산: B = 총 예산 − 산 금액 / 합친 = + 판 금액 − 인출 (판 돈 다시 넣음)
+  const remaining = loop ? round2(budget - spent + lotInfo.sold - lotInfo.withdrawn) : round2(budget - spent)
+  // 신저가: B = 시작일부터 최저 종가 / 합친 = 들고 있는 묶음 중 가장 싼 매수가 (팔리면 그다음 묶음)
+  const minLot = loop && lotInfo.lots.length ? lotInfo.lots.reduce((a, b) => (b.price < a.price ? b : a)) : null
+  const low = loop ? (minLot ? minLot.price : null) : closes.length ? Math.min(...closes.map((c) => c.close)) : null
+  const lowDate = loop ? minLot?.date ?? null : low === null ? null : closes.find((c) => c.close === low).date
   // 안전장치: 증권사 보유 수량 = 체결 내역(시작일 이후, 제외 빼고) 매수 − 매도 여야 함
   const netQty = used.reduce((t, f) => t + (f.side === 'buy' ? f.qty : -f.qty), 0)
   const warnings = []
@@ -113,7 +126,7 @@ export async function buildPlan(settings, { refPrice = null } = {}) {
   }
   // 사이클 종료: 시작일 이후 매도 체결이 있고 보유가 0주 (전량 매도) → 주문 계산 안 함
   const sells = used.filter((f) => f.side === 'sell')
-  const ended = !(h?.qty) && sells.length > 0 && netQty === 0
+  const ended = !loop && !(h?.qty) && sells.length > 0 && netQty === 0 // 합친 방식은 끝나지 않음 (0주면 다음 날 다시 첫날 규칙)
     ? (() => {
         const soldAmount = round2(sells.reduce((t, f) => t + f.amount, 0))
         return {
@@ -124,12 +137,19 @@ export async function buildPlan(settings, { refPrice = null } = {}) {
         }
       })()
     : null
-  const plan = ended ? { sell: null, buys: [], exhausted: false } : planDay(state, { sellPct: s.sellPct })
+  const plan = ended ? { sell: null, buys: [], exhausted: false }
+    : loop ? planLoopDay({ ...state, lots: lotInfo.lots }, { lotSellPct: s.lotSellPct })
+    : planDay(state, { sellPct: s.sellPct })
 
-  // 종가별 예상 (주요 가격 지점)
+  // 종가별 예상 (주요 가격 지점) — B: 팔리면 사이클 끝(매수 없음) / 합친: 묶음 매도와 매수가 같은 날 함께 체결될 수 있음
+  const settle = (c) => {
+    if (!loop) return settleDay(plan, c)
+    const buyQty = plan.buys.reduce((t, b) => t + filledQty(b.steps, c), 0)
+    return { sold: !!plan.sell && c >= plan.sell.price, sellQty: plan.sell && c >= plan.sell.price ? plan.sell.qty : 0, buyQty, buyAmount: round2(buyQty * c) }
+  }
   const points = new Set([q.price, q.prevClose, ...plan.buys.flatMap((b) => b.steps.map((x) => x.price))])
   if (plan.sell) points.add(plan.sell.price)
-  const preview = [...points].filter((v) => v > 0).sort((a, b) => b - a).map((c) => ({ close: round2(c), ...settleDay(plan, c) }))
+  const preview = [...points].filter((v) => v > 0).sort((a, b) => b - a).map((c) => ({ close: round2(c), ...settle(c) }))
 
   // 날짜별 내역 (시작일~): 종가 · 매수 · 매도 · 누적 보유 · 누적 쓴 금액 — 최신순
   const byDate = new Map()
@@ -139,11 +159,16 @@ export async function buildPlan(settings, { refPrice = null } = {}) {
     if (f.side === 'buy') { e.buyQty += f.qty; e.buyAmount += f.amount } else { e.sellQty += f.qty; e.sellAmount += f.amount }
     byDate.set(f.date, e)
   }
+  // 합친 방식: 그날 판 묶음의 수익 · 수익률, 인출
+  if (loop) {
+    for (const x of lotInfo.sales) { const e = byDate.get(x.date); if (e) { e.sellPnl = round2((e.sellPnl || 0) + x.pnl); e.sellCost = round2((e.sellCost || 0) + x.cost) } }
+    for (const w of lotInfo.withdrawals) { const e = byDate.get(w.date); if (e) e.withdraw = w.amount }
+  }
   let cumQty = 0, cumSpent = 0
   const history = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).map((e) => {
     cumQty += e.buyQty - e.sellQty
     cumSpent += e.buyAmount
-    return { ...e, buyAmount: round2(e.buyAmount), sellAmount: round2(e.sellAmount), cumQty, cumSpent: round2(cumSpent) }
+    return { ...e, buyAmount: round2(e.buyAmount), sellAmount: round2(e.sellAmount), cumQty, cumSpent: round2(cumSpent), ...(e.sellCost ? { sellPct: round2((e.sellAmount / e.sellCost - 1) * 100) } : {}) }
   }).reverse()
 
   // 최근 거래일 주문 상세 (체결 · 미체결 소멸 · 취소 · 거부)
@@ -169,6 +194,12 @@ export async function buildPlan(settings, { refPrice = null } = {}) {
     low, lowDate, closesUsed: closes.length, closedTo,
     excludedFills: allFills.filter((f) => excluded.has(f.no)),
     plan, preview, live, signature, netQty, warnings, history, lastDate, lastOrders, ended,
+    strategy: s.strategy,
+    loop: loop ? {
+      lotSellPct: s.lotSellPct, withdrawPct: s.withdrawPct,
+      lots: lotInfo.lots.map((l) => ({ ...l, sellPrice: Math.ceil(l.price * (1 + s.lotSellPct / 100) * 100 - 1e-9) / 100, next: plan.sell?.lot?.date === l.date })),
+      sold: lotInfo.sold, realized: lotInfo.realized, withdrawn: lotInfo.withdrawn, withdrawals: lotInfo.withdrawals, sales: lotInfo.sales,
+    } : null,
   }
 }
 

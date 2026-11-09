@@ -2,7 +2,8 @@
 //   실행: npm test
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ladder, filledQty, planDay, settleDay } from './engine.js'
+import { ladder, filledQty, planDay, planLoopDay, settleDay } from './engine.js'
+import { buildLots, cheapestLot } from './lots.js'
 
 const prices = (steps) => steps.map((s) => (s.qty > 1 ? `${s.price}x${s.qty}` : `${s.price}`))
 
@@ -88,4 +89,56 @@ test('2026-11-02 SOXL 실제 주문 13건과 같음', () => {
   // 어떤 종가에서도 하루 투자금 안
   for (const c of [96.79, 90, 85, 80, 77.05, 74, 70, 63]) assert.ok(settleDay(p, c).buyAmount <= 2383.97, `종가 ${c}`)
   assert.equal(settleDay(p, 121.82).sold, true)
+})
+
+// ===== 합친 방식 (매수 B · 가장 싼 묶음 +5% 매도) =====
+const fill = (date, side, qty, price) => ({ date, no: `${date}${side}${qty}`, side, qty, price, amount: Math.round(qty * price * 100) / 100 })
+
+test('묶음: 날짜별 매수 = 묶음, 매도는 가장 싼 묶음부터 · 실현 수익', () => {
+  const r = buildLots([fill('20261001', 'buy', 10, 100), fill('20261002', 'buy', 5, 90), fill('20261002', 'buy', 5, 90), fill('20261003', 'buy', 8, 95), fill('20261005', 'sell', 10, 95)])
+  assert.deepEqual(r.lots.map((l) => [l.date, l.qty, l.price]), [['20261001', 10, 100], ['20261003', 8, 95]])
+  assert.equal(r.spent, 2660); assert.equal(r.sold, 950); assert.equal(r.realized, 50)
+  assert.deepEqual(r.sales[0], { date: '20261005', qty: 10, cost: 900, amount: 950, pnl: 50, pct: 5.56 })
+  assert.equal(cheapestLot(r.lots).date, '20261003')
+})
+
+test('인출: 보유가 전부 팔린 날 그동안 실현 수익 × 50%', () => {
+  const r = buildLots([fill('20261001', 'buy', 10, 100), fill('20261002', 'buy', 10, 80), fill('20261005', 'sell', 10, 84), fill('20261006', 'sell', 10, 105)])
+  assert.equal(r.lots.length, 0)
+  assert.equal(r.realized, 90) // (84−80)×10 + (105−100)×10
+  assert.deepEqual(r.withdrawals, [{ date: '20261006', profit: 90, amount: 45 }])
+  assert.equal(r.withdrawn, 45)
+  assert.equal(buildLots([fill('20261001', 'buy', 1, 10), fill('20261002', 'sell', 1, 11)], { withdrawPct: 0 }).withdrawn, 0)
+})
+
+test('합친 방식 주문: 매도 = 가장 싼 묶음 ×1.05 그 수량, ② 신저가 = 가장 싼 묶음 매수가', () => {
+  const lots = [{ date: '20261001', qty: 14, price: 164.27 }, { date: '20261105', qty: 47, price: 40.87 }, { date: '20261106', qty: 24, price: 45.97 }]
+  const p = planLoopDay({ dailyAmount: 2383.97, remaining: 30000, holdQty: 85, avg: 80, lots, prevClose: 45.97, current: 45.97 })
+  assert.deepEqual(p.sell, { price: 42.92, qty: 47, lot: lots[1] })
+  assert.equal(p.low, 40.87)
+  assert.deepEqual(p.buys.map((b) => [b.tag, b.limit]), [['avg', 55.16], ['low', 40.87]])
+  // 묶음이 없으면 매도 없음 · 첫날 규칙
+  const z = planLoopDay({ dailyAmount: 500, remaining: 500, holdQty: 0, avg: null, lots: [], prevClose: 50, current: null })
+  assert.equal(z.sell, null); assert.equal(z.buys[0].tag, 'first')
+})
+
+// 백테스트(2026/10/05~11/06 SOXL 실제 종가)와 같은 결과 — 현재가 = 전날 종가, 판 돈 다시 안 넣음
+test('합친 방식 시뮬레이션 = 백테스트: 매도 7번 · 실현 +$1,348.03 · 312주 · 산 금액 $46,461.64', () => {
+  const closes = [164.27, 164.26, 158.91, 142.52, 139.76, 128.4, 127.57, 110.54, 107.35, 93.67, 98.65, 97.55, 103.24, 82.11, 83.56, 90.5, 101.08, 107.35, 102.39, 77.05, 68.17, 73.12, 66.68, 40.87, 45.97]
+  const budget = 71519.1, daily = 2383.97
+  let prev = 163.71, avg = null, qty = 0
+  const fills = []
+  closes.forEach((close, i) => {
+    const date = `d${String(i).padStart(2, '0')}`
+    const b = buildLots(fills)
+    const p = planLoopDay({ dailyAmount: daily, remaining: budget - b.spent, holdQty: qty, avg, lots: b.lots, prevClose: prev, current: prev })
+    if (p.sell && close >= p.sell.price) { fills.push(fill(date, 'sell', p.sell.qty, close)); qty -= p.sell.qty; if (!qty) avg = null }
+    const q = p.buys.reduce((t, x) => t + filledQty(x.steps, close), 0)
+    if (q) { avg = qty ? (qty * avg + q * close) / (qty + q) : close; qty += q; fills.push(fill(date, 'buy', q, close)) }
+    prev = close
+  })
+  const r = buildLots(fills)
+  assert.equal(r.sales.length, 7); assert.equal(r.realized, 1348.03)
+  assert.equal(qty, 312); assert.equal(r.lots.reduce((t, l) => t + l.qty, 0), 312)
+  assert.equal(r.spent, 46461.64)
 })

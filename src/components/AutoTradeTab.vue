@@ -9,6 +9,7 @@ import { useLocCycles, toForm } from '../composables/useLocCycles'
 //   설정 변경: 자동 저장 (진행 중 사이클)
 //   [계산]: 서버가 DB 설정으로 증권사에서 다시 계산 → 날짜별 내역 저장 · 전량 매도면 사이클 종료 → 오늘 주문 (주문 없음)
 //   [주문 넣기]: 확인 창 → 서버가 다시 계산해 같을 때만 전송 (LOC_ORDER_ENABLED=1 아니면 시험 모드)
+//   방식(018): B = 평단+기준% 전량 매도 / 합친 = 가장 싼 묶음 +기준% 매도 · 판 돈 재투자 · 묶음 목록 · 매도 수익 표시
 const props = defineProps({ portfolioId: { type: Number, default: null } })
 const emit = defineEmits(['toast', 'navigate'])
 const lc = useLocCycles(toRef(props, 'portfolioId'))
@@ -16,7 +17,9 @@ const lc = useLocCycles(toRef(props, 'portfolioId'))
 // 설정은 DB(loc_cycles)에 저장 — 사이클이 없을 때만 아래 빈 기본값으로 시작
 //   하루 투자금은 입력하지 않고 총 투자금 ÷ 분할 횟수로 계산, 거래소는 서버가 자동으로 찾음
 const todayKst = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date())
-const form = ref({ symbol: '', budget: '', splits: 30, startDate: todayKst, sellPct: 10, exclude: '' })
+const form = ref({ symbol: '', budget: '', splits: 30, startDate: todayKst, sellPct: 10, exclude: '', strategy: 'b', lotSellPct: 5, withdrawPct: 50 })
+const isLoop = computed(() => form.value.strategy === 'loop')
+const STRATEGY = { b: 'B 방식', loop: '합친 방식' }
 const daily = computed(() => {
   const b = Number(String(form.value.budget).replace(/,/g, ''))
   const n = Math.floor(Number(form.value.splits))
@@ -54,6 +57,8 @@ const timeText = (d) => (d ? new Date(d).toLocaleTimeString('ko-KR', { hour: '2-
 const usd = (v) => (v === null || v === undefined ? '–' : `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
 const ymd = (s) => (s ? `${s.slice(0, 4)}.${s.slice(4, 6)}.${s.slice(6, 8)}` : '–')
 const TAG = { sell: '매도', first: '1일차', avg: '① 평단', low: '② 신저가' }
+const md = (s) => (s ? `${s.slice(4, 6)}/${s.slice(6, 8)}` : '')
+const signed = (v) => `${v > 0 ? '+' : v < 0 ? '-' : ''}${usd(Math.abs(v))}`
 
 const loading = ref(false)
 const error = ref('')
@@ -83,7 +88,7 @@ async function calc({ keepResult = false } = {}) {
 const rows = computed(() => {
   if (!p.value) return []
   const out = []
-  if (p.value.plan.sell) out.push({ tag: 'sell', side: '매도', price: p.value.plan.sell.price, qty: p.value.plan.sell.qty, base: true })
+  if (p.value.plan.sell) out.push({ tag: 'sell', side: '매도', price: p.value.plan.sell.price, qty: p.value.plan.sell.qty, base: true, lot: p.value.plan.sell.lot })
   for (const b of p.value.plan.buys) b.steps.forEach((s, i) => out.push({ tag: b.tag, side: '매수', price: s.price, qty: s.qty, base: i === 0, amount: i === 0 ? b.amount : null }))
   return out
 })
@@ -124,7 +129,7 @@ const hiddenCount = computed(() => (p.value?.lastOrders || []).length - lastShow
 
 // 날짜별 내역: 계산했으면 그 결과, 아니면 DB 에 저장된 내역
 const hist = computed(() => (p.value ? p.value.history : lc.daily.value) || [])
-const histLow = computed(() => { const c = hist.value.map((x) => x.close).filter((v) => v > 0); return c.length ? Math.min(...c) : null })
+const histLow = computed(() => { if (isLoop.value) return null; const c = hist.value.map((x) => x.close).filter((v) => v > 0); return c.length ? Math.min(...c) : null })
 // 저장된 내역으로 바로 보여주는 요약 (계산 전)
 const savedSum = computed(() => {
   const d = lc.daily.value
@@ -191,10 +196,16 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
       <span class="at-chev" :class="{ open: !folded }" aria-hidden="true">⌄</span>
     </button>
     <p v-if="folded" class="at-folded">
-      {{ form.symbol }} · 총 {{ usd(Number(String(form.budget).replace(/,/g, ''))) }} · {{ form.splits }}회 (하루 {{ daily ? usd(daily) : '–' }}) · {{ String(form.startDate).replaceAll('-', '.') }} 시작 · 매도 {{ form.sellPct }}%
+      {{ STRATEGY[form.strategy] }} · {{ form.symbol }} · 총 {{ usd(Number(String(form.budget).replace(/,/g, ''))) }} · {{ form.splits }}회 (하루 {{ daily ? usd(daily) : '–' }}) · {{ String(form.startDate).replaceAll('-', '.') }} 시작 · {{ isLoop ? `묶음 매도 ${form.lotSellPct}% · 인출 ${form.withdrawPct}%` : `매도 ${form.sellPct}%` }}
       <template v-if="String(form.exclude).trim()"> · 제외 {{ String(form.exclude).split(/[\s,]+/).filter(Boolean).length }}건</template>
     </p>
     <div v-show="!folded" id="at-settings" class="at-grid">
+      <div class="field at-wide"><span class="field-label">방식</span>
+        <div class="filter-chips" role="radiogroup" aria-label="방식">
+          <button v-for="(t, k) in STRATEGY" :key="k" type="button" role="radio" :aria-checked="form.strategy === k" :class="{ on: form.strategy === k }" @click="form.strategy = k">{{ t }}</button>
+        </div>
+        <span class="field-hint">{{ isLoop ? '매수는 B 와 같고, 매도는 가장 싸게 산 묶음만 그 수량만큼 · 판 돈은 예산에 다시 넣음 · 사이클이 끝나지 않음' : '평단 + 매도 기준%에 전량 매도 → 사이클 종료' }}</span>
+      </div>
       <label class="field"><span class="field-label">사이클 시작일</span>
         <div class="field-input"><input v-model="form.startDate" type="date"></div></label>
       <label class="field"><span class="field-label">종목 (ticker)</span>
@@ -203,8 +214,14 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
         <div class="field-input"><input v-model="form.budget" inputmode="decimal" placeholder="예: 60000"><span class="suffix">$</span></div></label>
       <label class="field"><span class="field-label">분할 횟수 <span class="field-hint">하루 투자금 {{ daily ? usd(daily) : '–' }}</span></span>
         <div class="field-input"><input v-model="form.splits" inputmode="numeric"><span class="suffix">회</span></div></label>
-      <label class="field"><span class="field-label">매도 기준</span>
+      <label v-if="!isLoop" class="field"><span class="field-label">매도 기준</span>
         <div class="field-input"><input v-model="form.sellPct" inputmode="decimal"><span class="suffix">%</span></div></label>
+      <template v-else>
+        <label class="field"><span class="field-label">묶음 매도 기준 <span class="field-hint">가장 싼 묶음 매수가 +</span></span>
+          <div class="field-input"><input v-model="form.lotSellPct" inputmode="decimal"><span class="suffix">%</span></div></label>
+        <label class="field"><span class="field-label">인출 비율 <span class="field-hint">전부 매도될 때 수익 중</span></span>
+          <div class="field-input"><input v-model="form.withdrawPct" inputmode="decimal"><span class="suffix">%</span></div></label>
+      </template>
       <label class="field at-wide"><span class="field-label">제외할 주문번호 <span class="field-hint">실수 거래 등 — 쉼표로 구분</span></span>
         <div class="field-input"><input v-model="form.exclude" autocomplete="off" placeholder="예: 123456, 123457"></div></label>
     </div>
@@ -227,9 +244,9 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
     <div class="sum-side">
       <dl class="rows">
         <div class="row"><dt>누적 보유</dt><dd>{{ savedSum.qty }}주</dd></div>
-        <div class="row"><dt>신저가 <span class="label-sub">사이클 종가 최저</span></dt><dd>{{ usd(savedSum.low) }} <small class="at-sub">{{ ymd(savedSum.lowDate) }}</small></dd></div>
+        <div v-if="!isLoop" class="row"><dt>신저가 <span class="label-sub">사이클 종가 최저</span></dt><dd>{{ usd(savedSum.low) }} <small class="at-sub">{{ ymd(savedSum.lowDate) }}</small></dd></div>
       </dl>
-      <p class="at-info">오늘 주문·평단·현재가는 [계산]을 누르면 증권사에서 불러와요.</p>
+      <p class="at-info">{{ isLoop ? '합친 방식 — 묶음 · 판 금액 · 신저가(가장 싼 묶음)는 [계산]을 누르면 체결 내역으로 계산해요.' : '오늘 주문·평단·현재가는 [계산]을 누르면 증권사에서 불러와요.' }}</p>
     </div>
   </section>
 
@@ -239,12 +256,14 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
       <div class="sum-main">
         <p class="label">{{ p.symbol }} <span class="label-sub">{{ p.name }}</span></p>
         <p class="total">{{ usd(p.remaining) }}</p>
-        <p class="total-pl flat">남은 예산 · 총 {{ usd(p.budget) }} 중 {{ usd(p.spent) }} 사용 ({{ p.buyDays }}일) · 하루 {{ usd(p.dailyAmount) }}</p>
+        <p v-if="p.loop" class="total-pl flat">남은 예산 = 총 {{ usd(p.budget) }} − 산 금액 {{ usd(p.spent) }} + 판 금액 {{ usd(p.loop.sold) }}<template v-if="p.loop.withdrawn"> − 인출 {{ usd(p.loop.withdrawn) }}</template> · 하루 {{ usd(p.dailyAmount) }}</p>
+        <p v-else class="total-pl flat">남은 예산 · 총 {{ usd(p.budget) }} 중 {{ usd(p.spent) }} 사용 ({{ p.buyDays }}일) · 하루 {{ usd(p.dailyAmount) }}</p>
       </div>
       <div class="sum-side">
         <dl class="rows">
           <div class="row"><dt>보유 · 평단 <span class="label-sub">증권사</span></dt><dd>{{ p.holding.qty }}주 · {{ usd(p.holding.avg) }}</dd></div>
-          <div class="row"><dt>신저가 <span class="label-sub">사이클 종가 최저</span></dt><dd>{{ usd(p.low) }} <small class="at-sub">{{ ymd(p.lowDate) }}</small></dd></div>
+          <div class="row"><dt>신저가 <span class="label-sub">{{ p.loop ? '가장 싼 묶음' : '사이클 종가 최저' }}</span></dt><dd>{{ usd(p.low) }} <small class="at-sub">{{ ymd(p.lowDate) }}</small></dd></div>
+          <div v-if="p.loop" class="row"><dt>실현 수익 <span class="label-sub">판 묶음 합계</span></dt><dd :class="p.loop.realized > 0 ? 'up' : ''">{{ signed(p.loop.realized) }}<small v-if="p.loop.withdrawn" class="at-sub"> · 인출 {{ usd(p.loop.withdrawn) }}</small></dd></div>
           <div class="row"><dt>현재가 · 전일 종가</dt><dd>{{ usd(p.price) }} · {{ usd(p.prevClose) }}</dd></div>
           <div class="row"><dt>매수 상한 <span class="label-sub">현재가 × 1.2</span></dt><dd>{{ usd(Math.round(p.price * 120) / 100) }}</dd></div>
         </dl>
@@ -271,7 +290,7 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
         <thead><tr><th scope="col">구분</th><th scope="col">LOC 가격</th><th scope="col">수량</th><th scope="col">배정 금액</th></tr></thead>
         <tbody>
           <tr v-for="(r, i) in rows" :key="i" :class="{ 'at-step': !r.base }">
-            <th scope="row">{{ r.base ? TAG[r.tag] : '└ 계단' }}</th>
+            <th scope="row">{{ r.base ? TAG[r.tag] : '└ 계단' }}<small v-if="r.lot" class="at-sub"> {{ md(r.lot.date) }} 묶음 @{{ usd(r.lot.price) }}</small></th>
             <td>{{ usd(r.price) }}</td><td>{{ r.qty }}주</td><td>{{ r.amount ? usd(r.amount) : '' }}</td>
           </tr>
         </tbody>
@@ -283,8 +302,14 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
         <tbody>
           <tr v-for="x in p.preview" :key="x.close">
             <th scope="row">{{ usd(x.close) }}<small v-if="x.close === p.price" class="at-sub"> 현재가</small></th>
-            <td>{{ x.sold ? `전량 매도 ${p.plan.sell.qty}주` : x.buyQty ? `매수 ${x.buyQty}주` : '체결 없음' }}</td>
-            <td>{{ x.sold ? usd(x.close * p.plan.sell.qty) : x.buyQty ? usd(x.buyAmount) : '' }}</td>
+            <template v-if="p.loop">
+              <td>{{ [x.sold ? `묶음 매도 ${x.sellQty}주` : '', x.buyQty ? `매수 ${x.buyQty}주` : ''].filter(Boolean).join(' · ') || '체결 없음' }}</td>
+              <td>{{ [x.sold ? `+${usd(x.close * x.sellQty)}` : '', x.buyQty ? `−${usd(x.buyAmount)}` : ''].filter(Boolean).join(' / ') }}</td>
+            </template>
+            <template v-else>
+              <td>{{ x.sold ? `전량 매도 ${p.plan.sell.qty}주` : x.buyQty ? `매수 ${x.buyQty}주` : '체결 없음' }}</td>
+              <td>{{ x.sold ? usd(x.close * p.plan.sell.qty) : x.buyQty ? usd(x.buyAmount) : '' }}</td>
+            </template>
           </tr>
         </tbody>
       </table></div>
@@ -292,6 +317,26 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
       <button class="primary-btn" :disabled="blocked" @click="confirmOpen = true">주문 넣기{{ p.orderEnabled ? '' : ' (시험 모드)' }}</button>
       <p v-if="p.orderEnabled" class="at-info at-live">실제 주문 모드예요 — [주문 넣기]를 누르면 증권사에 실제 주문이 나가요.</p>
       <p v-else class="at-info">지금은 시험 모드예요 — 서버 환경변수 LOC_ORDER_ENABLED=1 일 때만 실제 주문이 나가요 (Vercel 은 넣은 뒤 Redeploy 필요).</p>
+    </section>
+
+    <!-- 합친 방식: 묶음 목록 -->
+    <section v-if="p.loop" class="card list-card">
+      <div class="list-head">
+        <div class="list-title"><h2>묶음<span>{{ p.loop.lots.length }}</span></h2></div>
+        <div class="list-actions"><span class="hint">매도는 ★ 묶음만 (가장 싼 매수가 +{{ p.loop.lotSellPct }}%)</span></div>
+      </div>
+      <p v-if="!p.loop.lots.length" class="at-info">들고 있는 묶음이 없어요 — 다음 거래일에 1일차 규칙으로 다시 사요.</p>
+      <div v-else class="ret-table-wrap"><table class="ret-table at-table">
+        <thead><tr><th scope="col">매수일</th><th scope="col">수량</th><th scope="col">매수가</th><th scope="col">매도 기준가</th><th scope="col">지금 손익</th></tr></thead>
+        <tbody>
+          <tr v-for="l in [...p.loop.lots].sort((a, b) => a.price - b.price)" :key="l.date" :class="{ 'at-low': l.next }">
+            <th scope="row">{{ l.next ? '★ ' : '' }}{{ ymd(l.date) }}</th>
+            <td>{{ l.qty }}주</td><td>{{ usd(l.price) }}</td><td>{{ usd(l.sellPrice) }}</td>
+            <td :class="p.price > l.price ? 'up' : 'down'">{{ ((p.price / l.price - 1) * 100).toFixed(1) }}%</td>
+          </tr>
+        </tbody>
+      </table></div>
+      <p class="at-info">판 금액 {{ usd(p.loop.sold) }} · 실현 수익 {{ signed(p.loop.realized) }} ({{ p.loop.sales.length }}번)<template v-if="p.loop.withdrawals.length"> · 인출 {{ usd(p.loop.withdrawn) }} ({{ p.loop.withdrawals.length }}번, 직접 출금)</template> · 묶음은 매수가가 싼 순서</p>
     </section>
 
     <!-- 최근 거래일 주문 결과 -->
@@ -346,12 +391,12 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
           <th scope="row">{{ ymd(e.date) }}</th>
           <td>{{ usd(e.close) }}{{ e.close === histLow ? ' ⬇' : '' }}</td>
           <td>{{ e.buyQty ? `${e.buyQty}주` : '–' }}</td><td>{{ e.buyQty ? usd(e.buyAmount) : '' }}</td>
-          <td>{{ e.sellQty ? `${e.sellQty}주 ${usd(e.sellAmount)}` : '–' }}</td>
+          <td>{{ e.sellQty ? `${e.sellQty}주 ${usd(e.sellAmount)}` : '–' }}<small v-if="e.sellPnl !== undefined" class="up"> {{ signed(e.sellPnl) }} ({{ e.sellPct > 0 ? '+' : '' }}{{ e.sellPct }}%)</small><small v-if="e.withdraw" class="at-sub"> · 인출 {{ usd(e.withdraw) }}</small></td>
           <td>{{ e.cumQty }}주</td><td>{{ usd(e.cumSpent) }}</td>
         </tr>
       </tbody>
     </table></div>
-    <p class="at-info">⬇ = 사이클 신저가 · 제외한 거래는 빠져 있어요</p>
+    <p class="at-info">{{ isLoop ? '매도 옆 = 판 묶음 수익 · 수익률' : '⬇ = 사이클 신저가' }} · 제외한 거래는 빠져 있어요</p>
   </section>
 
 
@@ -379,7 +424,7 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
       <label class="field"><span class="field-label">종목 (ticker)</span><div class="field-input"><input v-model="nextForm.symbol" autocomplete="off" @input="nextForm.symbol = nextForm.symbol.toUpperCase()"></div></label>
       <label class="field"><span class="field-label">총 투자금</span><div class="field-input"><input v-model="nextForm.budget" inputmode="decimal" placeholder="직접 입력"><span class="suffix">$</span></div></label>
       <label class="field"><span class="field-label">분할 횟수</span><div class="field-input"><input v-model="nextForm.splits" inputmode="numeric"><span class="suffix">회</span></div></label>
-      <label class="field"><span class="field-label">매도 기준</span><div class="field-input"><input v-model="nextForm.sellPct" inputmode="decimal"><span class="suffix">%</span></div></label>
+      <label v-if="nextForm.strategy !== 'loop'" class="field"><span class="field-label">매도 기준</span><div class="field-input"><input v-model="nextForm.sellPct" inputmode="decimal"><span class="suffix">%</span></div></label>
       <p v-if="nextError" class="form-error" role="alert">{{ nextError }}</p>
       <button class="primary-btn" type="submit" style="width:100%">시작</button>
     </form>

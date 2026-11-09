@@ -93,6 +93,22 @@ export function planDay(s, opts = {}) {
 }
 
 /**
+ * 합친 방식 하루 주문 — 매수는 planDay 와 같고(신저가 = 가장 싼 묶음 매수가), 매도는 가장 싼 묶음 1개
+ *   매도 LOC = 묶음 매수가 × (1 + lotSellPct) (올림), 수량 = 그 묶음 수량
+ * @param {object} s planDay 와 같음 (low 대신 lots 를 넘김)
+ * @param {{date, qty, price}[]} s.lots 들고 있는 묶음
+ * @returns {{ sell: {price,qty,lot}|null, buys, exhausted, low }}
+ */
+export function planLoopDay(s, opts = {}) {
+  const o = { lotSellPct: 5, ...opts }
+  const lot = s.lots.length ? s.lots.reduce((a, b) => (b.price < a.price ? b : a)) : null
+  const low = lot ? lot.price : null
+  const p = planDay({ ...s, low }, o)
+  const sell = lot ? { price: ceilCents(lot.price * (1 + o.lotSellPct / 100)), qty: lot.qty, lot } : null
+  return { ...p, sell, low }
+}
+
+/**
  * 하루 결과 (종가 close 기준) — 시뮬레이션·미리보기용
  * @returns {{ sold: boolean, buyQty: number, buyAmount: number }}
  */
