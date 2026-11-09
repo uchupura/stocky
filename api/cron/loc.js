@@ -1,5 +1,5 @@
 // GET /api/cron/loc
-//   Vercel Cron 이 한국 시간 월~금 19:00(무료 플랜은 그 뒤 1시간 안) 호출 → LOC 자동 주문 (server/loc/auto.js)
+//   Vercel Cron 이 한국 시간 월~금 18:00(무료 플랜은 그 뒤 1시간 안 → 18~19시) 호출 · 미국 동부 새벽 4시(서머타임 5시) — 프리마켓 시작 → LOC 자동 주문 (server/loc/auto.js)
 //   Vercel 이 "Authorization: Bearer <CRON_SECRET>" 을 붙여 보냄 → 일치할 때만 실행
 //   실제 전송은 LOC_ORDER_ENABLED=1 과 LOC_AUTO_ENABLED=1 둘 다 있을 때만 (아니면 시험 모드 알림)
 import { runAuto } from '../../server/loc/auto.js'
