@@ -926,6 +926,9 @@ div.ret-row:hover { background: none; }
 .at-form .filter-chips { padding: 0; }
 .at-form .field .field-hint { margin-top: 2px; }
 .at-low th:first-child { color: var(--up); }
+/* 날짜별 내역: 판 묶음 표시 */
+.at-sold { display: block; font-size: 11px; font-weight: 600; color: var(--sub); margin-top: 2px; }
+
 .summary .sum-side .primary-btn { width: 100%; margin-top: 12px; }
 /* 자동매매 — 사이클 설정 접기 */
 .at-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; padding: 0 0 8px; background: none; border: 0; color: var(--text); cursor: pointer; text-align: left; }

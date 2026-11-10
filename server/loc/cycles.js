@@ -38,15 +38,24 @@ export const settingsOf = (c) => ({
 /** 날짜별 내역 통째로 덮어쓰기 (history: buildPlan 의 최신순 목록) */
 export async function saveHistory(cycleId, history) {
   const db = adminDb()
-  const rows = history.map((e) => ({
+  const base = (e) => ({
     cycle_id: cycleId, trade_date: dash(e.date), close: e.close,
     buy_qty: e.buyQty, buy_amount: e.buyAmount, sell_qty: e.sellQty, sell_amount: e.sellAmount,
     cum_qty: e.cumQty, cum_spent: e.cumSpent, updated_at: new Date().toISOString(),
-  }))
+  })
+  // 019: 합친 방식 매도 수익 (내 방식 / 증권사 앱) · 인출 · 판 묶음
+  const full = (e) => ({
+    ...base(e),
+    sell_pnl: e.sellPnl ?? null, sell_pct: e.sellPct ?? null,
+    broker_pnl: e.brokerPnl ?? null, broker_pct: e.brokerPct ?? null, broker_avg: e.brokerAvg ?? null,
+    withdraw: e.withdraw ?? null, sold_from: e.soldFrom ?? null, lot_sold: e.lotSold ?? null,
+  })
   const { error: delErr } = await db.from('loc_daily').delete().eq('cycle_id', cycleId)
   if (delErr) throw delErr
-  if (rows.length) {
-    const { error } = await db.from('loc_daily').insert(rows)
+  if (history.length) {
+    let { error } = await db.from('loc_daily').insert(history.map(full))
+    // 019 적용 전이면 새 칸이 없음 → 기본 칸만으로 다시 (이미 지웠으므로 내역이 비지 않게)
+    if (error && /sell_pnl|sell_pct|broker_|withdraw|sold_from|lot_sold/.test(error.message || '')) ({ error } = await db.from('loc_daily').insert(history.map(base)))
     if (error) throw error
   }
 }

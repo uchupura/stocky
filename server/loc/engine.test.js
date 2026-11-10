@@ -98,7 +98,7 @@ test('묶음: 날짜별 매수 = 묶음, 매도는 가장 싼 묶음부터 · �
   const r = buildLots([fill('20261001', 'buy', 10, 100), fill('20261002', 'buy', 5, 90), fill('20261002', 'buy', 5, 90), fill('20261003', 'buy', 8, 95), fill('20261005', 'sell', 10, 95)])
   assert.deepEqual(r.lots.map((l) => [l.date, l.qty, l.price]), [['20261001', 10, 100], ['20261003', 8, 95]])
   assert.equal(r.spent, 2660); assert.equal(r.sold, 950); assert.equal(r.realized, 50)
-  assert.deepEqual(r.sales[0], { date: '20261005', qty: 10, cost: 900, amount: 950, pnl: 50, pct: 5.56 })
+  assert.deepEqual(r.sales[0], { date: '20261005', qty: 10, cost: 900, amount: 950, pnl: 50, pct: 5.56, avg: 95, brokerPnl: 0, brokerPct: 0, lots: [{ date: '20261002', qty: 10, price: 90 }] })
   assert.equal(cheapestLot(r.lots).date, '20261003')
 })
 
@@ -141,4 +141,21 @@ test('합친 방식 시뮬레이션 = 백테스트: 매도 7번 · 실현 +$1,34
   assert.equal(r.sales.length, 7); assert.equal(r.realized, 1348.03)
   assert.equal(qty, 312); assert.equal(r.lots.reduce((t, l) => t + l.qty, 0), 312)
   assert.equal(r.spent, 46461.64)
+})
+
+test('증권사 기준 손익: 평단(이동평균) 대비 — 내 방식은 수익, 증권사 앱은 손실', () => {
+  // 비싸게 산 묶음 10주 @100 + 싸게 산 10주 @50 → 평단 75 · 싼 묶음 10주를 55 에 팔면
+  const r = buildLots([fill('20261001', 'buy', 10, 100), fill('20261002', 'buy', 10, 50), fill('20261005', 'sell', 10, 55)])
+  const x = r.sales[0]
+  assert.equal(x.pnl, 50); assert.equal(x.pct, 10)                 // 내 방식: 묶음 매수가 50 대비 +10%
+  assert.equal(x.avg, 75); assert.equal(x.brokerPnl, -200); assert.equal(x.brokerPct, -26.67) // 증권사: 평단 75 대비
+  assert.deepEqual(r.soldLots, [{ date: '20261002', qty: 10, price: 50, soldOn: '20261005' }])
+  assert.equal(r.avg, 75) // 팔아도 평단 그대로
+})
+
+test('제외한 거래는 증권사 평단에만 들어감 (묶음 · 산 금액 · 수익에는 안 들어감)', () => {
+  const ex = [fill('20261003', 'buy', 10, 60), fill('20261004', 'sell', 10, 61)]
+  const r = buildLots([fill('20261001', 'buy', 10, 100), fill('20261002', 'buy', 10, 50)], { excludedFills: ex })
+  assert.equal(r.spent, 1500); assert.equal(r.lots.length, 2)
+  assert.equal(r.avg, 70) // (1000 + 500 + 600) / 30 = 70, 팔아도 그대로
 })

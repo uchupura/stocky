@@ -12,6 +12,7 @@
 // =====================================================================
 import { planDay, planLoopDay, settleDay, filledQty } from './engine.js'
 import { buildLots } from './lots.js'
+import { getUsdKrw } from '../fx.js'
 import { holding, quote, dailyCloses, fills, todayOrders, placeLoc, ordersOn, MARKET_OF } from '../meritz.js'
 
 const VENDOR_OF = Object.fromEntries(Object.entries(MARKET_OF).map(([v, m]) => [m, v]))
@@ -102,7 +103,7 @@ export async function buildPlan(settings, { refPrice = null } = {}) {
   const spent = round2(buys.reduce((t, f) => t + f.amount, 0))
   const budget = s.budget
   const loop = s.strategy === 'loop'
-  const lotInfo = loop ? buildLots(used, { withdrawPct: s.withdrawPct }) : null
+  const lotInfo = loop ? buildLots(used, { withdrawPct: s.withdrawPct, excludedFills: allFills.filter((f) => excluded.has(f.no)) }) : null
   // 남은 예산: B = 총 예산 − 산 금액 / 합친 = + 판 금액 − 인출 (판 돈 다시 넣음)
   const remaining = loop ? round2(budget - spent + lotInfo.sold - lotInfo.withdrawn) : round2(budget - spent)
   // 신저가: B = 시작일부터 최저 종가 / 합친 = 들고 있는 묶음 중 가장 싼 매수가 (팔리면 그다음 묶음)
@@ -161,14 +162,28 @@ export async function buildPlan(settings, { refPrice = null } = {}) {
   }
   // 합친 방식: 그날 판 묶음의 수익 · 수익률, 인출
   if (loop) {
-    for (const x of lotInfo.sales) { const e = byDate.get(x.date); if (e) { e.sellPnl = round2((e.sellPnl || 0) + x.pnl); e.sellCost = round2((e.sellCost || 0) + x.cost) } }
+    for (const x of lotInfo.sales) {
+      const e = byDate.get(x.date); if (!e) continue
+      e.sellPnl = round2((e.sellPnl || 0) + x.pnl); e.sellCost = round2((e.sellCost || 0) + x.cost)
+      // 증권사 앱 기준 (평단 대비) — 내 방식은 수익이어도 평단보다 싸게 팔면 손실로 보임
+      e.brokerPnl = round2((e.brokerPnl || 0) + x.brokerPnl); e.brokerCost = round2((e.brokerCost || 0) + x.qty * x.avg); e.brokerAvg = x.avg
+      e.soldFrom = [...(e.soldFrom || []), ...x.lots] // 판 묶음 (매수일 · 수량 · 매수가)
+    }
+    // 묶음을 산 날 → 언제 팔렸는지
+    for (const l of lotInfo.soldLots) { const e = byDate.get(l.date); if (e) e.lotSold = [...(e.lotSold || []), { qty: l.qty, soldOn: l.soldOn }] }
+    // 매도한 날 원/달러 환율 (원화 누적 수익용 — fx_daily 에 저장돼 화면이 다시 읽음) · 못 받으면 빠짐
+    for (const dt of [...new Set(lotInfo.sales.map((x) => x.date))]) {
+      try { const e = byDate.get(dt); if (e) e.sellFx = (await getUsdKrw(`${dt.slice(0, 4)}-${dt.slice(4, 6)}-${dt.slice(6, 8)}`)).rate } catch (err) { console.error('[loc] 매도일 환율', dt, err.message) }
+    }
     for (const w of lotInfo.withdrawals) { const e = byDate.get(w.date); if (e) e.withdraw = w.amount }
   }
   let cumQty = 0, cumSpent = 0
   const history = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)).map((e) => {
     cumQty += e.buyQty - e.sellQty
     cumSpent += e.buyAmount
-    return { ...e, buyAmount: round2(e.buyAmount), sellAmount: round2(e.sellAmount), cumQty, cumSpent: round2(cumSpent), ...(e.sellCost ? { sellPct: round2((e.sellAmount / e.sellCost - 1) * 100) } : {}) }
+    return { ...e, buyAmount: round2(e.buyAmount), sellAmount: round2(e.sellAmount), cumQty, cumSpent: round2(cumSpent),
+      ...(e.sellCost ? { sellPct: round2((e.sellAmount / e.sellCost - 1) * 100) } : {}),
+      ...(e.brokerCost ? { brokerPct: round2((e.sellAmount / e.brokerCost - 1) * 100) } : {}) }
   }).reverse()
 
   // 최근 거래일 주문 상세 (체결 · 미체결 소멸 · 취소 · 거부)
@@ -199,6 +214,7 @@ export async function buildPlan(settings, { refPrice = null } = {}) {
       lotSellPct: s.lotSellPct, withdrawPct: s.withdrawPct,
       lots: lotInfo.lots.map((l) => ({ ...l, sellPrice: Math.ceil(l.price * (1 + s.lotSellPct / 100) * 100 - 1e-9) / 100, next: plan.sell?.lot?.date === l.date })),
       sold: lotInfo.sold, realized: lotInfo.realized, withdrawn: lotInfo.withdrawn, withdrawals: lotInfo.withdrawals, sales: lotInfo.sales,
+      brokerRealized: round2(lotInfo.sales.reduce((t, x) => t + x.brokerPnl, 0)), calcAvg: lotInfo.avg,
     } : null,
   }
 }

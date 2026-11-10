@@ -66,6 +66,12 @@ export function useLocCycles(portfolioId) {
       date: d.trade_date.replaceAll('-', ''), close: d.close === null ? null : Number(d.close),
       buyQty: d.buy_qty, buyAmount: Number(d.buy_amount), sellQty: d.sell_qty, sellAmount: Number(d.sell_amount),
       cumQty: d.cum_qty, cumSpent: Number(d.cum_spent), updatedAt: d.updated_at,
+      // 019: 합친 방식 매도 수익 — 저장돼 있으면 (없으면 칸이 빠짐)
+      ...(d.sell_pnl != null ? { sellPnl: Number(d.sell_pnl), sellPct: Number(d.sell_pct) } : {}),
+      ...(d.broker_pnl != null ? { brokerPnl: Number(d.broker_pnl), brokerPct: Number(d.broker_pct), brokerAvg: Number(d.broker_avg) } : {}),
+      ...(d.withdraw != null ? { withdraw: Number(d.withdraw) } : {}),
+      ...(d.sold_from ? { soldFrom: d.sold_from } : {}),
+      ...(d.lot_sold ? { lotSold: d.lot_sold } : {}),
     }))
   }
 

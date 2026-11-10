@@ -3,6 +3,7 @@ import { ref, computed, watch, toRef } from 'vue'
 import BaseSheet from './BaseSheet.vue'
 import { locPreview, locSubmit } from '../lib/api'
 import { useLocCycles, toForm } from '../composables/useLocCycles'
+import { supabase } from '../lib/supabase'
 
 // 자동매매 탭 — LOC 분할매수 수동 운영 (자동화 전 단계)
 //   탭을 열면: DB(014)에 저장된 사이클 설정 · 날짜별 내역을 바로 표시 (증권사 조회 없이)
@@ -64,6 +65,7 @@ const signed = (v) => `${v > 0 ? '+' : v < 0 ? '-' : ''}${usd(Math.abs(v))}`
 const loading = ref(false)
 const error = ref('')
 const p = ref(null) // 계산 결과
+const fetchedAt = ref(null) // 증권사에서 마지막으로 불러온 시각
 async function calc({ keepResult = false } = {}) {
   loading.value = true
   error.value = ''
@@ -75,11 +77,33 @@ async function calc({ keepResult = false } = {}) {
     const cycle = await lc.save(form.value) // 설정 저장(처음이면 새 사이클) → 서버는 DB 설정으로 계산
     savedAt.value = new Date()
     p.value = await locPreview(cycle.id)
+    fetchedAt.value = new Date()
     lc.daily.value = p.value.history
     if (p.value.ended) { await lc.load(); emit('toast', '전량 매도로 사이클이 끝났어요') }
   } catch (e) {
     error.value = e.message
     p.value = null
+  } finally {
+    loading.value = false
+  }
+}
+
+// [새로고침] — 증권사에서 다시 불러와 날짜별 내역만 바꿈 (오늘 주문 · 묶음 · 주문 결과 카드는 안 보임, 주문 없음)
+const lastLoop = ref(null) // 새로고침으로 받은 묶음 정보 (★ 다음에 팔 묶음 표시용)
+async function refresh() {
+  if (!lc.active.value) return
+  loading.value = true
+  error.value = ''
+  try {
+    const r = await locPreview(lc.active.value.id)
+    lc.daily.value = r.history
+    lastLoop.value = r.loop
+    fetchedAt.value = new Date()
+    p.value = null
+    result.value = null
+    if (r.ended) { await lc.load(); emit('toast', '전량 매도로 사이클이 끝났어요') }
+  } catch (e) {
+    error.value = e.message
   } finally {
     loading.value = false
   }
@@ -131,8 +155,55 @@ const hiddenCount = computed(() => (p.value?.lastOrders || []).length - lastShow
 // 날짜별 내역: 계산했으면 그 결과, 아니면 DB 에 저장된 내역
 const hist = computed(() => (p.value ? p.value.history : lc.daily.value) || [])
 const histLow = computed(() => { const c = hist.value.map((x) => x.close).filter((v) => v > 0); return c.length ? Math.min(...c) : null })
+// ===== 누적 수익 (내 방식, 판 묶음 수익 합계) — 원화는 매도한 날 환율로 바꿔 더함 =====
+//   환율: 새로고침·[계산] 결과의 sellFx → 없으면 fx_daily(날짜별 환율, 서버가 저장) → 없으면 지금 환율(약)
+const fxByDate = ref({})  // 'YYYYMMDD' → 원/달러
+const fxNow = ref(null)
+watch(() => hist.value.filter((e) => e.sellPnl !== undefined && !e.sellFx).map((e) => e.date).join(), async (key) => {
+  if (!key) return
+  const dates = key.split(',').sort()
+  const dash = (d) => `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`
+  const from = new Date(`${dash(dates[0])}T12:00:00Z`); from.setUTCDate(from.getUTCDate() - 14) // 휴일이면 그 전 영업일 값
+  const [{ data }, { data: now }] = await Promise.all([
+    supabase.from('fx_daily').select('rate_date, rate').eq('currency', 'USD').gte('rate_date', from.toISOString().slice(0, 10)).lte('rate_date', dash(dates.at(-1))).order('rate_date'),
+    supabase.from('exchange_rates').select('rate_to_krw').eq('currency', 'USD').maybeSingle(),
+  ])
+  fxNow.value = now ? Number(now.rate_to_krw) : null
+  const map = { ...fxByDate.value }
+  for (const d of dates) { const r = (data || []).filter((x) => x.rate_date <= dash(d)).at(-1); if (r) map[d] = Number(r.rate) }
+  fxByDate.value = map
+}, { immediate: true })
+const cum = computed(() => {
+  const out = {}
+  let usdSum = 0, krwSum = 0, approx = false
+  for (const e of [...hist.value].reverse()) { // 오래된 날부터
+    if (e.sellPnl !== undefined) {
+      const fx = e.sellFx || fxByDate.value[e.date] || fxNow.value
+      if (!e.sellFx && !fxByDate.value[e.date]) approx = true
+      usdSum += e.sellPnl; if (fx) krwSum += e.sellPnl * fx
+    }
+    out[e.date] = usdSum ? { usd: Math.round(usdSum * 100) / 100, krw: Math.round(krwSum), approx } : null
+  }
+  return out
+})
+const won = (v) => `${v < 0 ? '-' : '+'}${Math.abs(v).toLocaleString('ko-KR')}원`
+const cumNow = computed(() => (hist.value.length ? cum.value[hist.value[0].date] : null)) // 지금까지 누적 (가장 최근 날)
+
 // 합친 방식: 지금 신저가 묶음(다음에 팔 묶음)을 산 날 — [계산] 뒤에만 알 수 있음
-const nextLotDate = computed(() => p.value?.loop?.lots.find((l) => l.next)?.date || null)
+// 저장된 날짜별 내역만으로 남은 묶음 계산: 그날 산 수량 − 그날 산 묶음 중 팔린 수량(✓) → 가장 싼 묶음 = 다음 신저가
+const histLots = computed(() => hist.value
+  .filter((e) => e.buyQty > 0)
+  .map((e) => ({ date: e.date, qty: e.buyQty - (e.lotSold || []).reduce((t, x) => t + x.qty, 0), price: e.buyAmount / e.buyQty }))
+  .filter((l) => l.qty > 0))
+const nextLot = computed(() => {
+  const fromCalc = (p.value?.loop || lastLoop.value)?.lots.find((l) => l.next)
+  if (fromCalc) return fromCalc
+  const l = histLots.value.reduce((a, b) => (!a || b.price < a.price ? b : a), null)
+  if (!l) return null
+  const price = Math.round(l.price * 10000) / 10000
+  return { ...l, price, sellPrice: Math.ceil(price * (1 + Number(form.value.lotSellPct || 5) / 100) * 100 - 1e-9) / 100 }
+})
+const nextLotDate = computed(() => nextLot.value?.date || null)
 // 저장된 내역으로 바로 보여주는 요약 (계산 전)
 const savedSum = computed(() => {
   const d = lc.daily.value
@@ -140,7 +211,10 @@ const savedSum = computed(() => {
   const budget = Number(String((ended.value ? toForm(ended.value) : form.value).budget).replace(/,/g, ''))
   const closes = d.map((x) => x.close).filter((v) => v > 0)
   const low = closes.length ? Math.min(...closes) : null
-  return { qty: d[0].cumQty, spent: d[0].cumSpent, remaining: Math.round((budget - d[0].cumSpent) * 100) / 100, budget, low, lowDate: d.find((x) => x.close === low)?.date, lastDate: d[0].date, updatedAt: d[0].updatedAt, days: d.filter((x) => x.buyQty).length }
+  const sold = d.reduce((t, x) => t + (x.sellAmount || 0), 0)
+  const withdrawn = d.reduce((t, x) => t + (x.withdraw || 0), 0)
+  const remaining = isLoop.value ? budget - d[0].cumSpent + sold - withdrawn : budget - d[0].cumSpent // 합친 방식은 판 돈이 다시 들어감
+  return { qty: d[0].cumQty, spent: d[0].cumSpent, sold, withdrawn, remaining: Math.round(remaining * 100) / 100, budget, low, lowDate: d.find((x) => x.close === low)?.date, lastDate: d[0].date, updatedAt: d[0].updatedAt, days: d.filter((x) => x.buyQty).length }
 })
 
 // ===== 새 사이클 시작 =====
@@ -176,7 +250,19 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
 </script>
 
 <template>
-  <div class="ph-link"><button class="chip-btn" @click="emit('navigate', 'profits')">익절 히스토리 →</button></div>
+  <!-- 위쪽: 증권사에서 다시 불러오기 (조회만) · 익절 히스토리 -->
+  <div class="refresh-bar">
+    <p class="refresh-info" aria-live="polite">
+      <template v-if="loading">증권사에서 불러오는 중…</template>
+      <template v-else-if="fetchedAt">증권사 기준 · {{ timeText(fetchedAt) }} 불러옴</template>
+      <template v-else-if="lc.active.value">저장된 내역 기준 · [새로고침]으로 증권사에서 날짜별 내역을 다시 불러와요</template>
+    </p>
+    <button class="chip-btn" @click="emit('navigate', 'profits')">익절 히스토리 →</button>
+    <button v-if="lc.active.value" type="button" class="refresh-btn" :class="{ spinning: loading }" :disabled="loading" @click="refresh">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" /></svg>
+      새로고침
+    </button>
+  </div>
   <section v-if="!ready" class="card" aria-busy="true"><span class="skeleton" style="width: 40%; height: 20px" /><span class="skeleton" style="height: 120px" /></section>
 
   <!-- 사이클 종료 -->
@@ -231,16 +317,21 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
   <!-- 저장된 내역 요약 (계산 전) -->
   <section v-if="ready && !p && savedSum && !ended" class="card summary">
     <div class="sum-main">
-      <p class="label">{{ form.symbol }} <span class="label-sub">저장된 내역 기준 · {{ ymd(savedSum.lastDate) }}까지</span></p>
+      <p class="label">{{ form.symbol }} <span class="label-sub">{{ fetchedAt ? '증권사 기준' : '저장된 내역 기준' }} · {{ ymd(savedSum.lastDate) }}까지</span></p>
       <p class="total">{{ usd(savedSum.remaining) }}</p>
-      <p class="total-pl flat">남은 예산 · 총 {{ usd(savedSum.budget) }} 중 {{ usd(savedSum.spent) }} 사용 ({{ savedSum.days }}일)</p>
+      <p v-if="isLoop" class="total-pl flat">남은 예산 = 총 {{ usd(savedSum.budget) }} − 산 금액 {{ usd(savedSum.spent) }} + 판 금액 {{ usd(savedSum.sold) }}<template v-if="savedSum.withdrawn"> − 인출 {{ usd(savedSum.withdrawn) }}</template></p>
+      <p v-else class="total-pl flat">남은 예산 · 총 {{ usd(savedSum.budget) }} 중 {{ usd(savedSum.spent) }} 사용 ({{ savedSum.days }}일)</p>
     </div>
     <div class="sum-side">
       <dl class="rows">
         <div class="row"><dt>누적 보유</dt><dd>{{ savedSum.qty }}주</dd></div>
+        <div v-if="isLoop" class="row"><dt>누적 수익 <span class="label-sub">내 방식</span></dt>
+          <dd v-if="cumNow"><span :class="cumNow.usd >= 0 ? 'up' : 'down'">{{ signed(cumNow.usd) }}</span> <small class="at-sub">{{ cumNow.approx ? '약 ' : '' }}{{ won(cumNow.krw) }} (매도일 환율)</small></dd>
+          <dd v-else>–</dd></div>
         <div v-if="!isLoop" class="row"><dt>신저가 <span class="label-sub">사이클 종가 최저</span></dt><dd>{{ usd(savedSum.low) }} <small class="at-sub">{{ ymd(savedSum.lowDate) }}</small></dd></div>
+        <div v-else-if="nextLot" class="row"><dt>신저가 <span class="label-sub">가장 싼 묶음 ★</span></dt><dd>{{ usd(nextLot.price) }} <small class="at-sub">{{ ymd(nextLot.date) }} · {{ nextLot.qty }}주 → 매도 {{ usd(nextLot.sellPrice) }}</small></dd></div>
       </dl>
-      <p class="at-info">{{ isLoop ? '합친 방식 — 묶음 · 판 금액 · 신저가(가장 싼 묶음)는 [계산]을 누르면 체결 내역으로 계산해요.' : '오늘 주문·평단·현재가는 [계산]을 누르면 증권사에서 불러와요.' }}</p>
+      <p class="at-info">[새로고침] = 날짜별 내역만 증권사에서 다시 불러와요 · 오늘 주문 · 묶음 · 평단 · 현재가는 [계산]을 누르면 보여요.</p>
     </div>
   </section>
 
@@ -257,7 +348,8 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
         <dl class="rows">
           <div class="row"><dt>보유 · 평단 <span class="label-sub">증권사</span></dt><dd>{{ p.holding.qty }}주 · {{ usd(p.holding.avg) }}</dd></div>
           <div class="row"><dt>신저가 <span class="label-sub">{{ p.loop ? '가장 싼 묶음' : '사이클 종가 최저' }}</span></dt><dd>{{ usd(p.low) }} <small class="at-sub">{{ ymd(p.lowDate) }}</small></dd></div>
-          <div v-if="p.loop" class="row"><dt>실현 수익 <span class="label-sub">판 묶음 합계</span></dt><dd :class="p.loop.realized > 0 ? 'up' : ''">{{ signed(p.loop.realized) }}<small v-if="p.loop.withdrawn" class="at-sub"> · 인출 {{ usd(p.loop.withdrawn) }}</small></dd></div>
+          <div v-if="p.loop" class="row"><dt>실현 수익 <span class="label-sub">내 방식 · 판 묶음 합계</span></dt><dd :class="p.loop.realized > 0 ? 'up' : ''">{{ signed(p.loop.realized) }}<small v-if="cumNow" class="at-sub"> {{ cumNow.approx ? '약 ' : '' }}{{ won(cumNow.krw) }}</small><small v-if="p.loop.withdrawn" class="at-sub"> · 인출 {{ usd(p.loop.withdrawn) }}</small></dd></div>
+          <div v-if="p.loop && p.loop.sales.length" class="row"><dt>증권사 앱 기준 <span class="label-sub">평단 대비</span></dt><dd :class="p.loop.brokerRealized >= 0 ? 'up' : 'down'">약 {{ signed(p.loop.brokerRealized) }}</dd></div>
           <div class="row"><dt>현재가 · 전일 종가</dt><dd>{{ usd(p.price) }} · {{ usd(p.prevClose) }}</dd></div>
           <div class="row"><dt>매수 상한 <span class="label-sub">현재가 × 1.2</span></dt><dd>{{ usd(Math.round(p.price * 120) / 100) }}</dd></div>
         </dl>
@@ -379,18 +471,21 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
   <section v-if="hist.length" class="card list-card">
     <div class="list-head"><div class="list-title"><h2>날짜별 내역<span>{{ hist.length }}</span></h2></div><div class="list-actions"><span class="hint">{{ ymd(hist.at(-1).date) }}부터</span></div></div>
     <div class="ret-table-wrap"><table class="ret-table at-table">
-      <thead><tr><th scope="col">날짜</th><th scope="col">종가</th><th scope="col">매수</th><th scope="col">매수 금액</th><th scope="col">매도</th><th scope="col">누적 보유</th><th scope="col">누적 쓴 금액</th></tr></thead>
+      <thead><tr><th scope="col">날짜</th><th scope="col">종가</th><th scope="col">매수</th><th scope="col">매수 금액</th><th scope="col">매도</th><th scope="col">수익 <span class="label-sub">내 방식</span></th><th scope="col">누적 보유</th><th scope="col">누적 쓴 금액</th></tr></thead>
       <tbody>
-        <tr v-for="e in hist" :key="e.date" :class="{ 'at-low': e.close === histLow || e.date === nextLotDate }">
-          <th scope="row">{{ e.date === nextLotDate ? '★ ' : '' }}{{ ymd(e.date) }}</th>
+        <template v-for="e in hist" :key="e.date">
+        <tr :class="{ 'at-low': e.close === histLow || e.date === nextLotDate }">
+          <th scope="row">{{ e.date === nextLotDate ? '★ ' : '' }}{{ ymd(e.date) }}<span v-for="x in e.lotSold || []" :key="x.soldOn" class="at-sold">✓ {{ md(x.soldOn) }} 매도{{ x.qty !== e.buyQty ? ` ${x.qty}주` : '' }}</span></th>
           <td>{{ usd(e.close) }}{{ e.close === histLow ? ' ⬇' : '' }}</td>
           <td>{{ e.buyQty ? `${e.buyQty}주` : '–' }}</td><td>{{ e.buyQty ? usd(e.buyAmount) : '' }}</td>
-          <td>{{ e.sellQty ? `${e.sellQty}주 ${usd(e.sellAmount)}` : '–' }}<small v-if="e.sellPnl !== undefined" class="up"> {{ signed(e.sellPnl) }} ({{ e.sellPct > 0 ? '+' : '' }}{{ e.sellPct }}%)</small><small v-if="e.withdraw" class="at-sub"> · 인출 {{ usd(e.withdraw) }}</small></td>
+          <td>{{ e.sellQty ? `${e.sellQty}주 ${usd(e.sellAmount)}` : '–' }}</td>
+          <td><template v-if="e.sellPnl !== undefined"><b :class="e.sellPnl >= 0 ? 'up' : 'down'">{{ signed(e.sellPnl) }}</b> <small :class="e.sellPnl >= 0 ? 'up' : 'down'">({{ e.sellPct > 0 ? '+' : '' }}{{ e.sellPct }}%)</small><small v-if="e.withdraw" class="at-sub"> · 인출 가능 {{ usd(e.withdraw) }}</small></template><template v-else>–</template></td>
           <td>{{ e.cumQty }}주</td><td>{{ usd(e.cumSpent) }}</td>
         </tr>
+        </template>
       </tbody>
     </table></div>
-    <p class="at-info">⬇ = 시작일부터 최저 종가{{ isLoop ? ' · ★ = 지금 신저가 묶음(다음에 팔 묶음)을 산 날 · 매도 옆 = 판 묶음 수익 · 수익률' : ' (사이클 신저가)' }} · 제외한 거래는 빠져 있어요</p>
+    <p class="at-info">⬇ = 시작일부터 최저 종가 · ★ = 다음에 팔 묶음을 산 날 · ✓ = 그날 산 묶음이 팔린 날 · 수익 = 판 묶음 매수가 대비 (증권사 앱은 평단 대비라 손실로 보일 수 있음) · 제외한 거래는 빠져 있어요</p>
   </section>
 
 
