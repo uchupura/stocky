@@ -927,6 +927,8 @@ div.ret-row:hover { background: none; }
 .at-form .field .field-hint { margin-top: 2px; }
 .at-low th:first-child { color: var(--up); }
 /* 날짜별 내역: 판 묶음 표시 */
+/* 그날 산 묶음이 팔린 날 = 날짜 파란색 */
+.at-sell-day th:first-child { color: var(--down); }
 .at-sold { display: block; font-size: 11px; font-weight: 600; color: var(--sub); margin-top: 2px; }
 
 .summary .sum-side .primary-btn { width: 100%; margin-top: 12px; }

@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 function friendly(e, fallback) {
   if (e?.code === '23505') return '진행 중인 사이클이 이미 있어요.'
   if (e?.code === '23514') return '입력값을 다시 확인해 주세요.'
+  if (/low_only/.test(e?.message || '')) return '평단 매수 멈춤을 쓰려면 020_loc_low_only.sql 을 먼저 실행해 주세요.'
   if (/strategy|lot_sell_pct|withdraw_pct/.test(e?.message || '')) return '합친 방식을 쓰려면 018_loc_strategy.sql 을 먼저 실행해 주세요.'
   if (e?.code === '42P01' || /loc_cycles|loc_daily/.test(e?.message || '')) return '자동매매 설정을 쓰려면 014_loc_cycles.sql 을 먼저 실행해 주세요.'
   return e?.message || fallback
@@ -26,6 +27,8 @@ export function toRow(form, portfolioId) {
       lot_sell_pct: Number(form.lotSellPct ?? 5),
       withdraw_pct: Number(form.withdrawPct ?? 50),
     } : {}),
+    // 020 — DB 에 칸이 있거나 켰을 때만 (적용 전에도 저장이 되게)
+    ...(form.hasLowOnly || form.lowOnly ? { low_only: !!form.lowOnly } : {}),
   }
 }
 /** DB 행 → 화면 입력 */
@@ -36,6 +39,8 @@ export const toForm = (c) => ({
   strategy: c.strategy === 'loop' ? 'loop' : 'b',
   lotSellPct: c.lot_sell_pct == null ? 5 : Number(c.lot_sell_pct),
   withdrawPct: c.withdraw_pct == null ? 50 : Number(c.withdraw_pct),
+  hasLowOnly: 'low_only' in c,
+  lowOnly: !!c.low_only,
 })
 
 export function useLocCycles(portfolioId) {

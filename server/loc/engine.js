@@ -24,6 +24,7 @@ export const DEFAULTS = {
   depthAvg: 0.35,     // ① 계단 깊이
   depthLow: 0.2,      // ② · 1일차 계단 깊이
   maxSteps: 10,       // 주문 하나당 계단 최대 건수
+  lowOnly: false,     // true: ① 평단 매수 멈춤, ② 신저가 매수만 (020)
 }
 
 const cents = (v) => Math.round(v * 100) / 100
@@ -73,7 +74,8 @@ export function planDay(s, opts = {}) {
 
   const wants = s.holdQty > 0
     ? [
-        { tag: 'avg', amount: floorCents(s.dailyAmount / 2), limit: cents(Math.min(s.avg, cap)), depth: o.depthAvg },
+        // lowOnly(020): ① 평단 매수 멈춤 → ② 신저가 매수만
+        ...(o.lowOnly ? [] : [{ tag: 'avg', amount: floorCents(s.dailyAmount / 2), limit: cents(Math.min(s.avg, cap)), depth: o.depthAvg }]),
         { tag: 'low', amount: floorCents(s.dailyAmount / 2), limit: cents(s.low), depth: o.depthLow },
       ]
     : [{ tag: 'first', amount: floorCents(s.dailyAmount), limit: cents(Math.min(s.prevClose * (1 + o.firstPct / 100), cap)), depth: o.depthLow }]

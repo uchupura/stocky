@@ -20,7 +20,7 @@ const lc = useLocCycles(toRef(props, 'portfolioId'))
 //   하루 투자금은 입력하지 않고 총 투자금 ÷ 분할 횟수로 계산, 거래소는 서버가 자동으로 찾음
 const todayKst = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date())
 // 화면은 합친 방식만 (B 방식 선택 UI 없음) — 저장할 때 항상 합친 방식으로
-const form = ref({ symbol: '', budget: '', splits: 30, startDate: todayKst, sellPct: 10, exclude: '', strategy: 'loop', lotSellPct: 5, withdrawPct: 50 })
+const form = ref({ symbol: '', budget: '', splits: 30, startDate: todayKst, sellPct: 10, exclude: '', strategy: 'loop', lotSellPct: 5, withdrawPct: 50, lowOnly: false })
 const isLoop = computed(() => true)
 const daily = computed(() => {
   const b = Number(String(form.value.budget).replace(/,/g, ''))
@@ -285,7 +285,7 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
       <span class="at-chev" :class="{ open: !folded }" aria-hidden="true">⌄</span>
     </button>
     <p v-if="folded" class="at-folded">
-      {{ form.symbol }} · 총 {{ usd(Number(String(form.budget).replace(/,/g, ''))) }} · {{ form.splits }}회 (하루 {{ daily ? usd(daily) : '–' }}) · {{ String(form.startDate).replaceAll('-', '.') }} 시작 · {{ isLoop ? `묶음 매도 ${form.lotSellPct}% · 인출 ${form.withdrawPct}%` : `매도 ${form.sellPct}%` }}
+      {{ form.symbol }} · 총 {{ usd(Number(String(form.budget).replace(/,/g, ''))) }} · {{ form.splits }}회 (하루 {{ daily ? usd(daily) : '–' }}) · {{ String(form.startDate).replaceAll('-', '.') }} 시작 · {{ isLoop ? `묶음 매도 ${form.lotSellPct}% · 인출 ${form.withdrawPct}%` : `매도 ${form.sellPct}%` }}{{ form.lowOnly ? ' · 평단 매수 멈춤' : '' }}
       <template v-if="String(form.exclude).trim()"> · 제외 {{ String(form.exclude).split(/[\s,]+/).filter(Boolean).length }}건</template>
     </p>
     <div v-show="!folded" id="at-settings" class="at-grid">
@@ -302,6 +302,10 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
         <div class="field-input"><input v-model="form.lotSellPct" inputmode="decimal"><span class="suffix">%</span></div></label>
       <label class="field"><span class="field-label">인출 비율 <span class="field-hint">전부 매도될 때 수익 중</span></span>
         <div class="field-input"><input v-model="form.withdrawPct" inputmode="decimal"><span class="suffix">%</span></div></label>
+      <label class="cash-check at-wide">
+        <input v-model="form.lowOnly" type="checkbox">
+        <span>평단 매수 멈춤 <small>① 평단 매수(하루 투자금 절반)를 걸지 않고 ② 신저가 매수만 해요 · 매도는 그대로</small></span>
+      </label>
       <label class="field at-wide"><span class="field-label">제외할 주문번호 <span class="field-hint">실수 거래 등 — 쉼표로 구분</span></span>
         <div class="field-input"><input v-model="form.exclude" autocomplete="off" placeholder="예: 123456, 123457"></div></label>
     </div>
@@ -474,7 +478,8 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
       <thead><tr><th scope="col">날짜</th><th scope="col">종가</th><th scope="col">매수</th><th scope="col">매수 금액</th><th scope="col">매도</th><th scope="col">수익 <span class="label-sub">내 방식</span></th><th scope="col">누적 보유</th><th scope="col">누적 쓴 금액</th></tr></thead>
       <tbody>
         <template v-for="e in hist" :key="e.date">
-        <tr :class="{ 'at-low': e.close === histLow || e.date === nextLotDate }">
+        <!-- 빨강 = 지금 신저가 묶음(★) · 파랑 = 그날 산 묶음이 팔린 날(✓) — ★ 가 우선 -->
+        <tr :class="{ 'at-low': e.date === nextLotDate, 'at-sell-day': e.date !== nextLotDate && e.lotSold?.length }">
           <th scope="row">{{ e.date === nextLotDate ? '★ ' : '' }}{{ ymd(e.date) }}<span v-for="x in e.lotSold || []" :key="x.soldOn" class="at-sold">✓ {{ md(x.soldOn) }} 매도{{ x.qty !== e.buyQty ? ` ${x.qty}주` : '' }}</span></th>
           <td>{{ usd(e.close) }}{{ e.close === histLow ? ' ⬇' : '' }}</td>
           <td>{{ e.buyQty ? `${e.buyQty}주` : '–' }}</td><td>{{ e.buyQty ? usd(e.buyAmount) : '' }}</td>
@@ -485,7 +490,7 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
         </template>
       </tbody>
     </table></div>
-    <p class="at-info">⬇ = 시작일부터 최저 종가 · ★ = 다음에 팔 묶음을 산 날 · ✓ = 그날 산 묶음이 팔린 날 · 수익 = 판 묶음 매수가 대비 (증권사 앱은 평단 대비라 손실로 보일 수 있음) · 제외한 거래는 빠져 있어요</p>
+    <p class="at-info">⬇ = 시작일부터 최저 종가 · <b class="up">★ 빨강</b> = 지금 신저가 (다음에 팔 묶음을 산 날) · <b class="down">파랑</b> = 그날 산 묶음이 팔린 날(✓) · 수익 = 판 묶음 매수가 대비 (증권사 앱은 평단 대비라 손실로 보일 수 있음) · 제외한 거래는 빠져 있어요</p>
   </section>
 
 

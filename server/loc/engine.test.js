@@ -159,3 +159,15 @@ test('제외한 거래는 증권사 평단에만 들어감 (묶음 · 산 금액
   assert.equal(r.spent, 1500); assert.equal(r.lots.length, 2)
   assert.equal(r.avg, 70) // (1000 + 500 + 600) / 30 = 70, 팔아도 그대로
 })
+
+test('평단 매수 멈춤(lowOnly): ① 없이 ② 신저가만 · 매도는 그대로', () => {
+  const lots = [{ date: '20261106', qty: 24, price: 45.97 }]
+  const p = planLoopDay({ dailyAmount: 2383.97, remaining: 30000, holdQty: 400, avg: 91.98, lots, prevClose: 56.2, current: 56.2 }, { lowOnly: true })
+  assert.deepEqual(p.buys.map((b) => b.tag), ['low'])
+  assert.equal(p.buys[0].amount, 1191.98)
+  assert.deepEqual([p.sell.qty, p.sell.price], [24, 48.27])
+  // 보유 0주면 첫날 규칙은 그대로
+  assert.equal(planLoopDay({ dailyAmount: 500, remaining: 500, holdQty: 0, avg: null, lots: [], prevClose: 50, current: null }, { lowOnly: true }).buys[0].tag, 'first')
+  // 끄면 ① ② 둘 다
+  assert.deepEqual(planLoopDay({ dailyAmount: 2383.97, remaining: 30000, holdQty: 400, avg: 91.98, lots, prevClose: 56.2, current: 56.2 }).buys.map((b) => b.tag), ['avg', 'low'])
+})
