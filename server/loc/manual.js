@@ -41,7 +41,7 @@ export const orderEnabled = () => ['1', 'true'].includes(String(process.env.LOC_
 /** 계산한 주문 → 보낼 주문 목록 (매도 먼저, 매수는 계단 순서) */
 export function orderList(plan) {
   const list = []
-  if (plan.sell) list.push({ tag: 'sell', side: 'sell', ...plan.sell })
+  for (const sl of plan.sells || (plan.sell ? [plan.sell] : [])) list.push({ tag: 'sell', side: 'sell', ...sl })
   for (const b of plan.buys) for (const st of b.steps) list.push({ tag: b.tag, side: 'buy', price: st.price, qty: st.qty })
   return list
 }
@@ -63,6 +63,7 @@ export function normalize(s = {}) {
     lotSellPct: Number(s.lotSellPct ?? 5),
     withdrawPct: Number(s.withdrawPct ?? 50),
     lowOnly: !!s.lowOnly,
+    sellLots: Math.min(3, Math.max(1, Math.floor(Number(s.sellLots) || 1))),
     exclude: [...new Set(String(s.exclude || '').split(/[\s,]+/).map((x) => x.trim()).filter(Boolean))],
   }
   const err = []
@@ -140,17 +141,18 @@ export async function buildPlan(settings, { refPrice = null } = {}) {
       })()
     : null
   const plan = ended ? { sell: null, buys: [], exhausted: false }
-    : loop ? planLoopDay({ ...state, lots: lotInfo.lots }, { lotSellPct: s.lotSellPct, lowOnly: s.lowOnly })
+    : loop ? planLoopDay({ ...state, lots: lotInfo.lots }, { lotSellPct: s.lotSellPct, lowOnly: s.lowOnly, sellLots: s.sellLots })
     : planDay(state, { sellPct: s.sellPct, lowOnly: s.lowOnly })
 
   // 종가별 예상 (주요 가격 지점) — B: 팔리면 사이클 끝(매수 없음) / 합친: 묶음 매도와 매수가 같은 날 함께 체결될 수 있음
   const settle = (c) => {
     if (!loop) return settleDay(plan, c)
     const buyQty = plan.buys.reduce((t, b) => t + filledQty(b.steps, c), 0)
-    return { sold: !!plan.sell && c >= plan.sell.price, sellQty: plan.sell && c >= plan.sell.price ? plan.sell.qty : 0, buyQty, buyAmount: round2(buyQty * c) }
+    const hit = (plan.sells || []).filter((x) => c >= x.price) // 그 종가에 팔리는 묶음 (싼 묶음부터)
+    return { sold: hit.length > 0, sellQty: hit.reduce((t, x) => t + x.qty, 0), sellLots: hit.length, buyQty, buyAmount: round2(buyQty * c) }
   }
   const points = new Set([q.price, q.prevClose, ...plan.buys.flatMap((b) => b.steps.map((x) => x.price))])
-  if (plan.sell) points.add(plan.sell.price)
+  for (const sl of plan.sells || (plan.sell ? [plan.sell] : [])) points.add(sl.price)
   const preview = [...points].filter((v) => v > 0).sort((a, b) => b - a).map((c) => ({ close: round2(c), ...settle(c) }))
 
   // 날짜별 내역 (시작일~): 종가 · 매수 · 매도 · 누적 보유 · 누적 쓴 금액 — 최신순
@@ -201,7 +203,7 @@ export async function buildPlan(settings, { refPrice = null } = {}) {
   }
 
   // 서버가 다시 계산했을 때 같은 주문인지 확인하는 서명
-  const signature = JSON.stringify([plan.sell, plan.buys.map((b) => b.steps)])
+  const signature = JSON.stringify([plan.sells || plan.sell, plan.buys.map((b) => b.steps)])
   return {
     symbol: s.symbol, name: q.name, vendor, market, dailyAmount: s.dailyAmount, calcPrice,
     holding: { qty: h?.qty || 0, avg: h?.avg ?? null },
@@ -210,10 +212,10 @@ export async function buildPlan(settings, { refPrice = null } = {}) {
     low, lowDate, closesUsed: closes.length, closedTo,
     excludedFills: allFills.filter((f) => excluded.has(f.no)),
     plan, preview, live, signature, netQty, warnings, history, lastDate, lastOrders, ended,
-    strategy: s.strategy, lowOnly: s.lowOnly,
+    strategy: s.strategy, lowOnly: s.lowOnly, sellLots: s.sellLots,
     loop: loop ? {
       lotSellPct: s.lotSellPct, withdrawPct: s.withdrawPct,
-      lots: lotInfo.lots.map((l) => ({ ...l, sellPrice: Math.ceil(l.price * (1 + s.lotSellPct / 100) * 100 - 1e-9) / 100, next: plan.sell?.lot?.date === l.date })),
+      lots: lotInfo.lots.map((l) => ({ ...l, sellPrice: Math.ceil(l.price * (1 + s.lotSellPct / 100) * 100 - 1e-9) / 100, next: plan.sell?.lot?.date === l.date, selling: (plan.sells || []).some((x) => x.lot.date === l.date) })),
       sold: lotInfo.sold, realized: lotInfo.realized, withdrawn: lotInfo.withdrawn, withdrawals: lotInfo.withdrawals, sales: lotInfo.sales,
       brokerRealized: round2(lotInfo.sales.reduce((t, x) => t + x.brokerPnl, 0)), calcAvg: lotInfo.avg,
     } : null,

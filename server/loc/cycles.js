@@ -33,6 +33,7 @@ export const settingsOf = (c) => ({
   lotSellPct: c.lot_sell_pct == null ? 5 : Number(c.lot_sell_pct),
   withdrawPct: c.withdraw_pct == null ? 50 : Number(c.withdraw_pct),
   lowOnly: !!c.low_only, // 020 (적용 전이면 칸이 없어서 false)
+  sellLots: c.sell_lots == null ? 1 : Number(c.sell_lots), // 021 (적용 전이면 1)
   exclude: (c.exclude_order_nos || []).join(','),
 })
 

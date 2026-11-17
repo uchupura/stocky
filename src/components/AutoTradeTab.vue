@@ -20,7 +20,7 @@ const lc = useLocCycles(toRef(props, 'portfolioId'))
 //   하루 투자금은 입력하지 않고 총 투자금 ÷ 분할 횟수로 계산, 거래소는 서버가 자동으로 찾음
 const todayKst = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date())
 // 화면은 합친 방식만 (B 방식 선택 UI 없음) — 저장할 때 항상 합친 방식으로
-const form = ref({ symbol: '', budget: '', splits: 30, startDate: todayKst, sellPct: 10, exclude: '', strategy: 'loop', lotSellPct: 5, withdrawPct: 50, lowOnly: false })
+const form = ref({ symbol: '', budget: '', splits: 30, startDate: todayKst, sellPct: 10, exclude: '', strategy: 'loop', lotSellPct: 5, withdrawPct: 50, lowOnly: false, sellLots: 1 })
 const isLoop = computed(() => true)
 const daily = computed(() => {
   const b = Number(String(form.value.budget).replace(/,/g, ''))
@@ -113,7 +113,7 @@ async function refresh() {
 const rows = computed(() => {
   if (!p.value) return []
   const out = []
-  if (p.value.plan.sell) out.push({ tag: 'sell', side: '매도', price: p.value.plan.sell.price, qty: p.value.plan.sell.qty, base: true, lot: p.value.plan.sell.lot })
+  for (const sl of p.value.plan.sells || (p.value.plan.sell ? [p.value.plan.sell] : [])) out.push({ tag: 'sell', side: '매도', price: sl.price, qty: sl.qty, base: true, lot: sl.lot })
   for (const b of p.value.plan.buys) b.steps.forEach((s, i) => out.push({ tag: b.tag, side: '매수', price: s.price, qty: s.qty, base: i === 0, amount: i === 0 ? b.amount : null }))
   return out
 })
@@ -285,7 +285,7 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
       <span class="at-chev" :class="{ open: !folded }" aria-hidden="true">⌄</span>
     </button>
     <p v-if="folded" class="at-folded">
-      {{ form.symbol }} · 총 {{ usd(Number(String(form.budget).replace(/,/g, ''))) }} · {{ form.splits }}회 (하루 {{ daily ? usd(daily) : '–' }}) · {{ String(form.startDate).replaceAll('-', '.') }} 시작 · {{ isLoop ? `묶음 매도 ${form.lotSellPct}% · 인출 ${form.withdrawPct}%` : `매도 ${form.sellPct}%` }}{{ form.lowOnly ? ' · 평단 매수 멈춤' : '' }}
+      {{ form.symbol }} · 총 {{ usd(Number(String(form.budget).replace(/,/g, ''))) }} · {{ form.splits }}회 (하루 {{ daily ? usd(daily) : '–' }}) · {{ String(form.startDate).replaceAll('-', '.') }} 시작 · {{ isLoop ? `묶음 매도 ${form.lotSellPct}% · 인출 ${form.withdrawPct}%` : `매도 ${form.sellPct}%` }}{{ isLoop ? ` · 하루 ${form.sellLots || 1}묶음 매도` : '' }}{{ form.lowOnly ? ' · 평단 매수 멈춤' : '' }}
       <template v-if="String(form.exclude).trim()"> · 제외 {{ String(form.exclude).split(/[\s,]+/).filter(Boolean).length }}건</template>
     </p>
     <div v-show="!folded" id="at-settings" class="at-grid">
@@ -302,6 +302,11 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
         <div class="field-input"><input v-model="form.lotSellPct" inputmode="decimal"><span class="suffix">%</span></div></label>
       <label class="field"><span class="field-label">인출 비율 <span class="field-hint">전부 매도될 때 수익 중</span></span>
         <div class="field-input"><input v-model="form.withdrawPct" inputmode="decimal"><span class="suffix">%</span></div></label>
+      <div class="field"><span class="field-label">하루 매도 묶음 수 <span class="field-hint">가장 싼 묶음부터, 묶음마다 따로</span></span>
+        <div class="filter-chips" role="radiogroup" aria-label="하루 매도 묶음 수">
+          <button v-for="n in [1, 2, 3]" :key="n" type="button" role="radio" :aria-checked="Number(form.sellLots) === n" :class="{ on: Number(form.sellLots) === n }" @click="form.sellLots = n">{{ n }}묶음</button>
+        </div>
+      </div>
       <label class="cash-check at-wide">
         <input v-model="form.lowOnly" type="checkbox">
         <span>평단 매수 멈춤 <small>① 평단 매수(하루 투자금 절반)를 걸지 않고 ② 신저가 매수만 해요 · 매도는 그대로</small></span>
@@ -393,7 +398,7 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
           <tr v-for="x in p.preview" :key="x.close">
             <th scope="row">{{ usd(x.close) }}<small v-if="x.close === p.price" class="at-sub"> 현재가</small></th>
             <template v-if="p.loop">
-              <td>{{ [x.sold ? `묶음 매도 ${x.sellQty}주` : '', x.buyQty ? `매수 ${x.buyQty}주` : ''].filter(Boolean).join(' · ') || '체결 없음' }}</td>
+              <td>{{ [x.sold ? `묶음 매도 ${x.sellQty}주${x.sellLots > 1 ? ` (${x.sellLots}묶음)` : ''}` : '', x.buyQty ? `매수 ${x.buyQty}주` : ''].filter(Boolean).join(' · ') || '체결 없음' }}</td>
               <td>{{ [x.sold ? `+${usd(x.close * x.sellQty)}` : '', x.buyQty ? `−${usd(x.buyAmount)}` : ''].filter(Boolean).join(' / ') }}</td>
             </template>
             <template v-else>
@@ -413,14 +418,14 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
     <section v-if="p.loop" class="card list-card">
       <div class="list-head">
         <div class="list-title"><h2>묶음<span>{{ p.loop.lots.length }}</span></h2></div>
-        <div class="list-actions"><span class="hint">매도는 ★ 묶음만 (가장 싼 매수가 +{{ p.loop.lotSellPct }}%)</span></div>
+        <div class="list-actions"><span class="hint">★ = 신저가 · 매도 주문 = 가장 싼 {{ p.sellLots || 1 }}묶음 (각 매수가 +{{ p.loop.lotSellPct }}%)</span></div>
       </div>
       <p v-if="!p.loop.lots.length" class="at-info">들고 있는 묶음이 없어요 — 다음 거래일에 1일차 규칙으로 다시 사요.</p>
       <div v-else class="ret-table-wrap"><table class="ret-table at-table">
         <thead><tr><th scope="col">매수일</th><th scope="col">수량</th><th scope="col">매수가</th><th scope="col">매도 기준가</th><th scope="col">지금 손익</th></tr></thead>
         <tbody>
           <tr v-for="l in [...p.loop.lots].sort((a, b) => a.price - b.price)" :key="l.date" :class="{ 'at-low': l.next }">
-            <th scope="row">{{ l.next ? '★ ' : '' }}{{ ymd(l.date) }}</th>
+            <th scope="row">{{ l.next ? '★ ' : '' }}{{ ymd(l.date) }}<small v-if="l.selling" class="at-sub"> 매도 주문</small></th>
             <td>{{ l.qty }}주</td><td>{{ usd(l.price) }}</td><td>{{ usd(l.sellPrice) }}</td>
             <td :class="p.price > l.price ? 'up' : 'down'">{{ ((p.price / l.price - 1) * 100).toFixed(1) }}%</td>
           </tr>
@@ -501,7 +506,7 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
         서버가 다시 계산해서 지금 화면과 같을 때만 보내요.
       </p>
       <p class="confirm-text">
-        매도 {{ p.plan.sell ? `${usd(p.plan.sell.price)} × ${p.plan.sell.qty}주` : '없음' }}<br>
+        매도 {{ (p.plan.sells || []).length ? p.plan.sells.map((x) => `${usd(x.price)} × ${x.qty}주`).join(' · ') : '없음' }}<br>
         매수 배정 {{ usd(p.plan.buys.reduce((t, b) => t + b.amount, 0)) }} (하루 투자금 {{ usd(p.dailyAmount) }} 이하)
       </p>
       <div class="btn-row">

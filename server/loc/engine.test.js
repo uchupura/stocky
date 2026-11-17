@@ -171,3 +171,22 @@ test('평단 매수 멈춤(lowOnly): ① 없이 ② 신저가만 · 매도는 �
   // 끄면 ① ② 둘 다
   assert.deepEqual(planLoopDay({ dailyAmount: 2383.97, remaining: 30000, holdQty: 400, avg: 91.98, lots, prevClose: 56.2, current: 56.2 }).buys.map((b) => b.tag), ['avg', 'low'])
 })
+
+test('하루 매도 묶음 수(sellLots): 가장 싼 묶음 N개를 각자 매수가 ×1.05 에 · 기본 1', () => {
+  const lots = [{ date: '20261111', qty: 18, price: 66.03 }, { date: '20261104', qty: 34, price: 66.68 }, { date: '20261103', qty: 16, price: 73.12 }, { date: '20261005', qty: 14, price: 164.27 }]
+  const s = { dailyAmount: 2383.97, remaining: 30000, holdQty: 82, avg: 89.14, lots, prevClose: 66.03, current: 66.03 }
+  assert.deepEqual(planLoopDay(s).sells.map((x) => [x.lot.date, x.qty, x.price]), [['20261111', 18, 69.34]])
+  const two = planLoopDay(s, { sellLots: 2 })
+  assert.deepEqual(two.sells.map((x) => [x.lot.date, x.qty, x.price]), [['20261111', 18, 69.34], ['20261104', 34, 70.02]])
+  assert.equal(two.sell.lot.date, '20261111'); assert.equal(two.low, 66.03) // 신저가는 그대로 가장 싼 묶음
+  assert.equal(planLoopDay(s, { sellLots: 3 }).sells.length, 3)
+  assert.equal(planLoopDay(s, { sellLots: 9 }).sells.length, 3) // 최대 3
+  assert.equal(planLoopDay({ ...s, lots: lots.slice(0, 1) }, { sellLots: 3 }).sells.length, 1) // 묶음이 적으면 있는 만큼
+})
+
+test('같은 날 두 묶음 매도 체결 → 싼 묶음부터 차감 · 묶음별 수익', () => {
+  const r = buildLots([fill('20261101', 'buy', 10, 100), fill('20261102', 'buy', 10, 60), fill('20261103', 'buy', 10, 70), fill('20261105', 'sell', 10, 74), fill('20261105', 'sell', 10, 74)])
+  assert.deepEqual(r.lots.map((l) => l.date), ['20261101'])
+  assert.deepEqual(r.soldLots.map((l) => [l.date, l.soldOn]), [['20261102', '20261105'], ['20261103', '20261105']])
+  assert.equal(r.realized, 180) // (74−60)×10 + (74−70)×10
+})

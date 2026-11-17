@@ -91,23 +91,25 @@ export function planDay(s, opts = {}) {
     room = floorCents(room - amount)
     buys.push({ tag: w.tag, amount, limit: w.limit, steps })
   }
-  return { sell, buys, exhausted: buys.length === 0 }
+  return { sell, sells: sell ? [sell] : [], buys, exhausted: buys.length === 0 }
 }
 
 /**
- * 합친 방식 하루 주문 — 매수는 planDay 와 같고(신저가 = 가장 싼 묶음 매수가), 매도는 가장 싼 묶음 1개
- *   매도 LOC = 묶음 매수가 × (1 + lotSellPct) (올림), 수량 = 그 묶음 수량
+ * 합친 방식 하루 주문 — 매수는 planDay 와 같고(신저가 = 가장 싼 묶음 매수가), 매도는 가장 싼 묶음 sellLots 개(1~3, 021)
+ *   묶음마다 매도 LOC = 그 묶음 매수가 × (1 + lotSellPct) (올림), 수량 = 그 묶음 수량 — 주문 따로
+ *   LOC 라 싼 묶음 주문부터 체결됨 (비싼 묶음만 팔리는 일 없음) → 묶음 차감(가장 싼 묶음부터)과 맞음
  * @param {object} s planDay 와 같음 (low 대신 lots 를 넘김)
  * @param {{date, qty, price}[]} s.lots 들고 있는 묶음
  * @returns {{ sell: {price,qty,lot}|null, buys, exhausted, low }}
  */
 export function planLoopDay(s, opts = {}) {
-  const o = { lotSellPct: 5, ...opts }
-  const lot = s.lots.length ? s.lots.reduce((a, b) => (b.price < a.price ? b : a)) : null
-  const low = lot ? lot.price : null
+  const o = { lotSellPct: 5, sellLots: 1, ...opts }
+  const sorted = [...s.lots].sort((a, b) => a.price - b.price || a.date.localeCompare(b.date)) // 가장 싼 순 (같으면 먼저 산 묶음)
+  const low = sorted.length ? sorted[0].price : null
   const p = planDay({ ...s, low }, o)
-  const sell = lot ? { price: ceilCents(lot.price * (1 + o.lotSellPct / 100)), qty: lot.qty, lot } : null
-  return { ...p, sell, low }
+  const n = Math.min(3, Math.max(1, Math.floor(Number(o.sellLots) || 1)))
+  const sells = sorted.slice(0, n).map((lot) => ({ price: ceilCents(lot.price * (1 + o.lotSellPct / 100)), qty: lot.qty, lot }))
+  return { ...p, sell: sells[0] || null, sells, low }
 }
 
 /**
