@@ -506,8 +506,8 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
       <thead><tr><th scope="col">날짜</th><th scope="col">종가</th><th scope="col">매수</th><th scope="col">매수 금액</th><th scope="col">매도</th><th scope="col">수익 <span class="label-sub">내 방식</span></th><th scope="col">누적 보유</th><th scope="col">누적 쓴 금액</th></tr></thead>
       <tbody>
         <template v-for="e in hist" :key="e.date">
-        <!-- 빨강 = 지금 신저가 묶음(★) · 파랑 = 그날 산 묶음이 팔린 날(✓) — ★ 가 우선 -->
-        <tr :class="{ 'at-low': e.date === nextLotDate, 'at-sell-day': e.date !== nextLotDate && e.lotSold?.length }">
+        <!-- 빨강 = 지금 신저가 묶음(★) · 파랑 = 그날 산 묶음이 팔린 날(✓) 또는 매수 안 된 날 — ★ 가 우선 -->
+        <tr :class="{ 'at-low': e.date === nextLotDate, 'at-sell-day': e.date !== nextLotDate && (e.lotSold?.length || !(e.buyQty > 0)) }">
           <th scope="row">{{ e.date === nextLotDate ? '★ ' : '' }}{{ ymd(e.date) }}<span v-for="x in e.lotSold || []" :key="x.soldOn" class="at-sold">✓ {{ md(x.soldOn) }} 매도{{ x.qty !== e.buyQty ? ` ${x.qty}주` : '' }}</span></th>
           <td>{{ usd(e.close) }}{{ e.close === histLow ? ' ⬇' : '' }}</td>
           <td>{{ e.buyQty ? `${e.buyQty}주` : '–' }}</td><td>{{ e.buyQty ? usd(e.buyAmount) : '' }}</td>
@@ -518,7 +518,7 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
         </template>
       </tbody>
     </table></div>
-    <p class="at-info">⬇ = 시작일부터 최저 종가 · <b class="up">★ 빨강</b> = 지금 신저가 (다음에 팔 묶음을 산 날) · <b class="down">파랑</b> = 그날 산 묶음이 팔린 날(✓) · 수익 = 판 묶음 매수가 대비 (증권사 앱은 평단 대비라 손실로 보일 수 있음) · 제외한 거래는 빠져 있어요</p>
+    <p class="at-info">⬇ = 시작일부터 최저 종가 · <b class="up">★ 빨강</b> = 지금 신저가 (다음에 팔 묶음을 산 날) · <b class="down">파랑</b> = 그날 산 묶음이 팔린 날(✓) · 매수 안 된 날 · 수익 = 판 묶음 매수가 대비 (증권사 앱은 평단 대비라 손실로 보일 수 있음) · 제외한 거래는 빠져 있어요</p>
   </section>
 
 
