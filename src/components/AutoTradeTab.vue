@@ -174,6 +174,8 @@ const hiddenCount = computed(() => (p.value?.lastOrders || []).length - lastShow
 
 // 날짜별 내역: 계산했으면 그 결과, 아니면 DB 에 저장된 내역
 const hist = computed(() => (p.value ? p.value.history : lc.daily.value) || [])
+// 표에는 매수·매도 중 하나라도 된 날만 (⬇ 최저 종가·묶음 계산은 전체 hist 기준)
+const histShown = computed(() => hist.value.filter((e) => e.buyQty > 0 || e.sellQty > 0))
 const histLow = computed(() => { const c = hist.value.map((x) => x.close).filter((v) => v > 0); return c.length ? Math.min(...c) : null })
 // ===== 누적 수익 (내 방식, 판 묶음 수익 합계) — 원화는 매도한 날 환율로 바꿔 더함 =====
 //   환율: 새로고침·[계산] 결과의 sellFx → 없으면 fx_daily(날짜별 환율, 서버가 저장) → 없으면 지금 환율(약)
@@ -500,12 +502,12 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
   </template>
 
   <!-- 날짜별 내역 (DB 저장분 또는 계산 결과) -->
-  <section v-if="hist.length" class="card list-card">
-    <div class="list-head"><div class="list-title"><h2>날짜별 내역<span>{{ hist.length }}</span></h2></div><div class="list-actions"><span class="hint">{{ ymd(hist.at(-1).date) }}부터</span></div></div>
+  <section v-if="histShown.length" class="card list-card">
+    <div class="list-head"><div class="list-title"><h2>날짜별 내역<span>{{ histShown.length }}</span></h2></div><div class="list-actions"><span class="hint">{{ ymd(hist.at(-1).date) }}부터</span></div></div>
     <div class="ret-table-wrap"><table class="ret-table at-table">
       <thead><tr><th scope="col">날짜</th><th scope="col">종가</th><th scope="col">매수</th><th scope="col">매수 금액</th><th scope="col">매도</th><th scope="col">수익 <span class="label-sub">내 방식</span></th><th scope="col">누적 보유</th><th scope="col">누적 쓴 금액</th></tr></thead>
       <tbody>
-        <template v-for="e in hist" :key="e.date">
+        <template v-for="e in histShown" :key="e.date">
         <!-- 빨강 = 지금 신저가 묶음(★) · 파랑 = 그날 산 묶음이 팔린 날(✓) 또는 매수 안 된 날 — ★ 가 우선 -->
         <tr :class="{ 'at-low': e.date === nextLotDate, 'at-sell-day': e.date !== nextLotDate && (e.lotSold?.length || !(e.buyQty > 0)) }">
           <th scope="row">{{ e.date === nextLotDate ? '★ ' : '' }}{{ ymd(e.date) }}<span v-for="x in e.lotSold || []" :key="x.soldOn" class="at-sold">✓ {{ md(x.soldOn) }} 매도{{ x.qty !== e.buyQty ? ` ${x.qty}주` : '' }}</span></th>
@@ -518,7 +520,7 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
         </template>
       </tbody>
     </table></div>
-    <p class="at-info">⬇ = 시작일부터 최저 종가 · <b class="up">★ 빨강</b> = 지금 신저가 (다음에 팔 묶음을 산 날) · <b class="down">파랑</b> = 그날 산 묶음이 팔린 날(✓) · 매수 안 된 날 · 수익 = 판 묶음 매수가 대비 (증권사 앱은 평단 대비라 손실로 보일 수 있음) · 제외한 거래는 빠져 있어요</p>
+    <p class="at-info">⬇ = 시작일부터 최저 종가 · <b class="up">★ 빨강</b> = 지금 신저가 (다음에 팔 묶음을 산 날) · <b class="down">파랑</b> = 그날 산 묶음이 팔린 날(✓) · 매수 안 된 날(매도만) · 매수·매도 둘 다 없는 날은 숨김 · 수익 = 판 묶음 매수가 대비 (증권사 앱은 평단 대비라 손실로 보일 수 있음) · 제외한 거래는 빠져 있어요</p>
   </section>
 
 
