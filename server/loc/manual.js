@@ -64,6 +64,7 @@ export function normalize(s = {}) {
     withdrawPct: Number(s.withdrawPct ?? 50),
     lowOnly: !!s.lowOnly,
     sellLots: Math.min(3, Math.max(1, Math.floor(Number(s.sellLots) || 1))),
+    buyPaused: !!s.buyPaused,
     exclude: [...new Set(String(s.exclude || '').split(/[\s,]+/).map((x) => x.trim()).filter(Boolean))],
   }
   const err = []
@@ -141,8 +142,8 @@ export async function buildPlan(settings, { refPrice = null } = {}) {
       })()
     : null
   const plan = ended ? { sell: null, buys: [], exhausted: false }
-    : loop ? planLoopDay({ ...state, lots: lotInfo.lots }, { lotSellPct: s.lotSellPct, lowOnly: s.lowOnly, sellLots: s.sellLots })
-    : planDay(state, { sellPct: s.sellPct, lowOnly: s.lowOnly })
+    : loop ? planLoopDay({ ...state, lots: lotInfo.lots }, { lotSellPct: s.lotSellPct, lowOnly: s.lowOnly, sellLots: s.sellLots, buyPaused: s.buyPaused })
+    : planDay(state, { sellPct: s.sellPct, lowOnly: s.lowOnly, buyPaused: s.buyPaused })
 
   // 종가별 예상 (주요 가격 지점) — B: 팔리면 사이클 끝(매수 없음) / 합친: 묶음 매도와 매수가 같은 날 함께 체결될 수 있음
   const settle = (c) => {
@@ -212,7 +213,7 @@ export async function buildPlan(settings, { refPrice = null } = {}) {
     low, lowDate, closesUsed: closes.length, closedTo,
     excludedFills: allFills.filter((f) => excluded.has(f.no)),
     plan, preview, live, signature, netQty, warnings, history, lastDate, lastOrders, ended,
-    strategy: s.strategy, lowOnly: s.lowOnly, sellLots: s.sellLots,
+    strategy: s.strategy, lowOnly: s.lowOnly, sellLots: s.sellLots, buyPaused: s.buyPaused,
     loop: loop ? {
       lotSellPct: s.lotSellPct, withdrawPct: s.withdrawPct,
       lots: lotInfo.lots.map((l) => ({ ...l, sellPrice: Math.ceil(l.price * (1 + s.lotSellPct / 100) * 100 - 1e-9) / 100, next: plan.sell?.lot?.date === l.date, selling: (plan.sells || []).some((x) => x.lot.date === l.date) })),

@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 function friendly(e, fallback) {
   if (e?.code === '23505') return '진행 중인 사이클이 이미 있어요.'
   if (e?.code === '23514') return '입력값을 다시 확인해 주세요.'
+  if (/buy_paused/.test(e?.message || '')) return '매수 중지를 쓰려면 022_loc_buy_paused.sql 을 먼저 실행해 주세요.'
   if (/sell_lots/.test(e?.message || '')) return '하루 매도 묶음 수를 쓰려면 021_loc_sell_lots.sql 을 먼저 실행해 주세요.'
   if (/low_only/.test(e?.message || '')) return '평단 매수 멈춤을 쓰려면 020_loc_low_only.sql 을 먼저 실행해 주세요.'
   if (/strategy|lot_sell_pct|withdraw_pct/.test(e?.message || '')) return '합친 방식을 쓰려면 018_loc_strategy.sql 을 먼저 실행해 주세요.'
@@ -31,6 +32,8 @@ export function toRow(form, portfolioId) {
     // 020 — DB 에 칸이 있거나 켰을 때만 (적용 전에도 저장이 되게)
     ...(form.hasLowOnly || form.lowOnly ? { low_only: !!form.lowOnly } : {}),
     // 021 — DB 에 칸이 있거나 1 이 아닐 때만
+    // 022 — DB 에 칸이 있거나 켰을 때만
+    ...(form.hasBuyPaused || form.buyPaused ? { buy_paused: !!form.buyPaused } : {}),
     ...(form.hasSellLots || Number(form.sellLots) > 1 ? { sell_lots: Math.min(3, Math.max(1, Math.floor(Number(form.sellLots) || 1))) } : {}),
   }
 }
@@ -44,6 +47,8 @@ export const toForm = (c) => ({
   withdrawPct: c.withdraw_pct == null ? 50 : Number(c.withdraw_pct),
   hasLowOnly: 'low_only' in c,
   lowOnly: !!c.low_only,
+  hasBuyPaused: 'buy_paused' in c,
+  buyPaused: !!c.buy_paused,
   hasSellLots: 'sell_lots' in c,
   sellLots: c.sell_lots == null ? 1 : Number(c.sell_lots),
 })

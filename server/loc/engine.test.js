@@ -190,3 +190,12 @@ test('같은 날 두 묶음 매도 체결 → 싼 묶음부터 차감 · 묶음�
   assert.deepEqual(r.soldLots.map((l) => [l.date, l.soldOn]), [['20261102', '20261105'], ['20261103', '20261105']])
   assert.equal(r.realized, 180) // (74−60)×10 + (74−70)×10
 })
+
+test('매수 중지(buyPaused): 매수 주문 없음 · 묶음 매도는 그대로 · 1일차도 안 삼', () => {
+  const lots = [{ date: '20261116', qty: 24, price: 48.76 }]
+  const p = planLoopDay({ dailyAmount: 2383.97, remaining: 30000, holdQty: 24, avg: 89, lots, prevClose: 50, current: 50 }, { buyPaused: true })
+  assert.deepEqual(p.buys, []); assert.equal(p.paused, true); assert.equal(p.exhausted, false)
+  assert.deepEqual([p.sell.qty, p.sell.price], [24, 51.2])
+  assert.deepEqual(planLoopDay({ dailyAmount: 500, remaining: 500, holdQty: 0, avg: null, lots: [], prevClose: 50, current: null }, { buyPaused: true }).buys, [])
+  assert.equal(planLoopDay({ dailyAmount: 2383.97, remaining: 30000, holdQty: 24, avg: 89, lots, prevClose: 50, current: 50 }).buys.length, 2) // 끄면 원래대로
+})

@@ -20,7 +20,7 @@ const lc = useLocCycles(toRef(props, 'portfolioId'))
 //   하루 투자금은 입력하지 않고 총 투자금 ÷ 분할 횟수로 계산, 거래소는 서버가 자동으로 찾음
 const todayKst = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date())
 // 화면은 합친 방식만 (B 방식 선택 UI 없음) — 저장할 때 항상 합친 방식으로
-const form = ref({ symbol: '', budget: '', splits: 30, startDate: todayKst, sellPct: 10, exclude: '', strategy: 'loop', lotSellPct: 5, withdrawPct: 50, lowOnly: false, sellLots: 1 })
+const form = ref({ symbol: '', budget: '', splits: 30, startDate: todayKst, sellPct: 10, exclude: '', strategy: 'loop', lotSellPct: 5, withdrawPct: 50, lowOnly: false, sellLots: 1, buyPaused: false })
 const isLoop = computed(() => true)
 const daily = computed(() => {
   const b = Number(String(form.value.budget).replace(/,/g, ''))
@@ -85,6 +85,26 @@ async function calc({ keepResult = false } = {}) {
     p.value = null
   } finally {
     loading.value = false
+  }
+}
+
+// [매수 중지] / [매수 다시 시작] — 바로 저장 (022), 다음 주문부터 매수 없음 · 매도는 그대로
+const pausing = ref(false)
+async function toggleBuyPause() {
+  if (!lc.active.value || pausing.value) return
+  pausing.value = true
+  const next = !form.value.buyPaused
+  try {
+    clearTimeout(saveTimer)
+    await lc.save({ ...form.value, buyPaused: next })
+    form.value.buyPaused = next
+    savedAt.value = new Date()
+    emit('toast', next ? '매수를 중지했어요 — 다음 주문부터 매도만 걸려요' : '매수를 다시 시작했어요')
+    if (p.value) await calc({ keepResult: true }) // 계산 결과가 떠 있으면 새 설정으로 다시
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    pausing.value = false
   }
 }
 
@@ -258,11 +278,13 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
       <template v-else-if="lc.active.value">저장된 내역 기준 · [새로고침]으로 증권사에서 날짜별 내역을 다시 불러와요</template>
     </p>
     <button class="chip-btn" @click="emit('navigate', 'profits')">익절 히스토리 →</button>
+    <button v-if="lc.active.value" type="button" class="chip-btn at-pause" :class="{ on: form.buyPaused }" :disabled="pausing" :aria-pressed="form.buyPaused" @click="toggleBuyPause">{{ form.buyPaused ? '▶ 매수 다시 시작' : '⏸ 매수 중지' }}</button>
     <button v-if="lc.active.value" type="button" class="refresh-btn" :class="{ spinning: loading }" :disabled="loading" @click="refresh">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" /></svg>
       새로고침
     </button>
   </div>
+  <p v-if="lc.active.value && form.buyPaused" class="at-paused" role="status">⏸ 매수 중지 중 — 매수 주문은 걸지 않고 묶음 매도만 걸려요. 이미 걸린 오늘 주문은 증권사 앱에서 직접 취소해야 해요.</p>
   <section v-if="!ready" class="card" aria-busy="true"><span class="skeleton" style="width: 40%; height: 20px" /><span class="skeleton" style="height: 120px" /></section>
 
   <!-- 사이클 종료 -->
@@ -285,7 +307,7 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
       <span class="at-chev" :class="{ open: !folded }" aria-hidden="true">⌄</span>
     </button>
     <p v-if="folded" class="at-folded">
-      {{ form.symbol }} · 총 {{ usd(Number(String(form.budget).replace(/,/g, ''))) }} · {{ form.splits }}회 (하루 {{ daily ? usd(daily) : '–' }}) · {{ String(form.startDate).replaceAll('-', '.') }} 시작 · {{ isLoop ? `묶음 매도 ${form.lotSellPct}% · 인출 ${form.withdrawPct}%` : `매도 ${form.sellPct}%` }}{{ isLoop ? ` · 하루 ${form.sellLots || 1}묶음 매도` : '' }}{{ form.lowOnly ? ' · 평단 매수 멈춤' : '' }}
+      {{ form.symbol }} · 총 {{ usd(Number(String(form.budget).replace(/,/g, ''))) }} · {{ form.splits }}회 (하루 {{ daily ? usd(daily) : '–' }}) · {{ String(form.startDate).replaceAll('-', '.') }} 시작 · {{ isLoop ? `묶음 매도 ${form.lotSellPct}% · 인출 ${form.withdrawPct}%` : `매도 ${form.sellPct}%` }}{{ isLoop ? ` · 하루 ${form.sellLots || 1}묶음 매도` : '' }}{{ form.lowOnly ? ' · 평단 매수 멈춤' : '' }}{{ form.buyPaused ? ' · ⏸ 매수 중지' : '' }}
       <template v-if="String(form.exclude).trim()"> · 제외 {{ String(form.exclude).split(/[\s,]+/).filter(Boolean).length }}건</template>
     </p>
     <div v-show="!folded" id="at-settings" class="at-grid">
@@ -380,6 +402,7 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
           <span class="hint">모두 LOC · 종가에 체결</span>
         </div>
       </div>
+      <p v-if="p.plan.paused" class="at-info at-live">⏸ 매수 중지 중이라 매수 주문이 없어요 (매도만).</p>
       <p v-if="p.plan.exhausted" class="at-info">남은 예산으로 1주도 살 수 없어 매수 주문이 없어요 (매도는 계속).</p>
       <div class="ret-table-wrap"><table class="ret-table at-table">
         <thead><tr><th scope="col">구분</th><th scope="col">LOC 가격</th><th scope="col">수량</th><th scope="col">배정 금액</th></tr></thead>

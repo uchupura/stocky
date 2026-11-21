@@ -25,6 +25,7 @@ export const DEFAULTS = {
   depthLow: 0.2,      // ② · 1일차 계단 깊이
   maxSteps: 10,       // 주문 하나당 계단 최대 건수
   lowOnly: false,     // true: ① 평단 매수 멈춤, ② 신저가 매수만 (020)
+  buyPaused: false,   // true: 매수 중지 — 매수 주문 없음, 매도만 (022)
 }
 
 const cents = (v) => Math.round(v * 100) / 100
@@ -80,10 +81,10 @@ export function planDay(s, opts = {}) {
       ]
     : [{ tag: 'first', amount: floorCents(s.dailyAmount), limit: cents(Math.min(s.prevClose * (1 + o.firstPct / 100), cap)), depth: o.depthLow }]
 
-  // 남은 예산 안에서 앞에서부터 (① 먼저)
+  // 남은 예산 안에서 앞에서부터 (① 먼저) · 매수 중지면 매수 없음
   let room = floorCents(Math.max(0, s.remaining))
   const buys = []
-  for (const w of wants) {
+  for (const w of o.buyPaused ? [] : wants) {
     if (!(w.limit > 0)) continue
     const amount = floorCents(Math.min(w.amount, room))
     const steps = ladder(amount, w.limit, { depth: w.depth, maxSteps: o.maxSteps })
@@ -91,7 +92,7 @@ export function planDay(s, opts = {}) {
     room = floorCents(room - amount)
     buys.push({ tag: w.tag, amount, limit: w.limit, steps })
   }
-  return { sell, sells: sell ? [sell] : [], buys, exhausted: buys.length === 0 }
+  return { sell, sells: sell ? [sell] : [], buys, exhausted: !o.buyPaused && buys.length === 0, paused: !!o.buyPaused }
 }
 
 /**
