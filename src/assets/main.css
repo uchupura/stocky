@@ -929,6 +929,13 @@ div.ret-row:hover { background: none; }
 /* 날짜별 내역: 판 묶음 표시 */
 /* 매수 중지 버튼 · 안내 띠 */
 .at-pause.on { background: var(--up); color: #fff; }
+/* 자동매매 위쪽 줄 — 버튼이 3개라 좁은 화면에선 문구를 윗줄 전체로, 버튼은 아랫줄 오른쪽 */
+.at-bar { flex-wrap: wrap; }
+.at-bar .chip-btn { flex: none; }
+@media (max-width: 600px) {
+  .at-bar { justify-content: flex-end; gap: 8px; }
+  .at-bar .refresh-info { flex-basis: 100%; }
+}
 .at-paused { margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; background: color-mix(in srgb, var(--up) 14%, transparent); color: var(--text); font-size: 13px; font-weight: 600; line-height: 1.5; }
 /* 그날 산 묶음이 팔린 날 = 날짜 파란색 */
 .at-sell-day th:first-child { color: var(--down); }

@@ -273,7 +273,7 @@ const STATUS = { live: '✅ 살아 있음', rejected: '⛔ 거부', failed: '⛔
 
 <template>
   <!-- 위쪽: 증권사에서 다시 불러오기 (조회만) · 익절 히스토리 -->
-  <div class="refresh-bar">
+  <div class="refresh-bar at-bar">
     <p class="refresh-info" aria-live="polite">
       <template v-if="loading">증권사에서 불러오는 중…</template>
       <template v-else-if="fetchedAt">증권사 기준 · {{ timeText(fetchedAt) }} 불러옴</template>
